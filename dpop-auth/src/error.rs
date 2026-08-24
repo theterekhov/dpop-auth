@@ -72,3 +72,41 @@ pub enum DpopError {
     #[error("internal error: {0}")]
     Internal(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_typ_display() {
+        let err = DpopError::InvalidTyp("bearer".into());
+        assert_eq!(
+            err.to_string(),
+            "invalid typ: expected dpop+jwt, got bearer"
+        )
+    }
+
+    #[test]
+    fn htm_mismatch_display() {
+        let err = DpopError::HtmMismatch {
+            expected: "POST".into(),
+            got: "GET".into(),
+        };
+        assert_eq!(err.to_string(), "htm mismatch: expected POST, got GET");
+    }
+
+    #[test]
+    fn nonce_variants_carry_nonce() {
+        let nonce = "eyJ7S_zG.eyJH0-Z.HX4w-7v".to_string();
+
+        match DpopError::TokenNonceRequired(nonce.clone()) {
+            DpopError::TokenNonceRequired(n) => assert_eq!(n, nonce),
+            _ => panic!("expected TokenNonceRequired"),
+        }
+
+        match DpopError::ResourceNonceRequired(nonce.clone()) {
+            DpopError::ResourceNonceRequired(n) => assert_eq!(n, nonce),
+            _ => panic!("expected ResourceNonceRequired"),
+        }
+    }
+}

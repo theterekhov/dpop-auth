@@ -109,4 +109,53 @@ mod tests {
     fn ath_differs_for_different_tokens() {
         assert_ne!(compute_ath("token-a"), compute_ath("token-b"));
     }
+
+    #[test]
+    fn thumbprint_matches_ec_vector() {
+        let jwk: Jwk = serde_json::from_str(
+           r#"{"kty":"EC","crv":"P-256","x":"l8tFrhx-34tV3hRICRDY9zCkDlpBhF42UQUfWVAWBFs","y":"9VE4jf_Ok_o64zbTTlcuNJajHmt6v9TDVrU0CdvGRDA"}"#,
+       )
+       .unwrap();
+
+        assert_eq!(
+            compute_jwk_thumbprint(&jwk).unwrap(),
+            "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I"
+        );
+    }
+
+    #[test]
+    fn thumbprint_matches_rsa_vector() {
+        let jwk: Jwk = serde_json::from_str(
+            r#"{
+                "kty": "RSA",
+                "n": "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
+                "e": "AQAB",
+                "alg": "RS256",
+                "kid": "2011-04-29"
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            compute_jwk_thumbprint(&jwk).unwrap(),
+            "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
+        );
+    }
+
+    #[test]
+    fn thumbprint_ignores_extra_members() {
+        let a: Jwk = serde_json::from_str(
+            r#"{"kty":"EC","crv":"P-256","x":"l8tFrhx-34tV3hRICRDY9zCkDlpBhF42UQUfWVAWBFs","y":"9VE4jf_Ok_o64zbTTlcuNJajHmt6v9TDVrU0CdvGRDA"}"#,
+        )
+        .unwrap();
+        let b: Jwk = serde_json::from_str(
+            r#"{"kid":"my-key","y":"9VE4jf_Ok_o64zbTTlcuNJajHmt6v9TDVrU0CdvGRDA","x":"l8tFrhx-34tV3hRICRDY9zCkDlpBhF42UQUfWVAWBFs","crv":"P-256","kty":"EC","alg":"ES256"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            compute_jwk_thumbprint(&a).unwrap(),
+            compute_jwk_thumbprint(&b).unwrap()
+        );
+    }
 }
