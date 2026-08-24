@@ -1,0 +1,25 @@
+[package]
+name = "dpop-auth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "DPoP (RFC 9449) authentication library for Axum"
+license.workspace = true
+keywords = ["dpop", "auth", "axum", "oauth", "jwt", "jws"]
+categories = ["authentication", "web-programming::http-server"]
+repository.workspace = true
+readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = []
+
+[dependencies]
+jsonwebtoken.workspace = true
+sha2.workspace = true
+base64ct.workspace = true
+hex.workspace = true
+thiserror.workspace = true
