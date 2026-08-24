@@ -14,7 +14,6 @@ use thiserror::Error;
 /// use dpop_auth::DpopError;
 ///
 /// let err = DpopError::InvalidTyp("bearer".to_string());
-///
 /// assert_eq!(err.to_string(), "invalid typ: expected dpop+jwt, got bearer");
 /// ```
 #[derive(Debug, Error)]
