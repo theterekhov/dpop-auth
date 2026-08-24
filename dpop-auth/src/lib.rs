@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
+#![allow(clippy::tabs_in_doc_comments)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 //! DPoP (RFC 9449) authentication for Axum
@@ -11,3 +12,4 @@ pub mod crypto;
 pub mod error;
 
 pub use error::DpopError;
+pub use jsonwebtoken::jwk::Jwk;

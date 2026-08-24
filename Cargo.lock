@@ -134,6 +134,7 @@ dependencies = [
  "base64ct",
  "hex",
  "jsonwebtoken",
+ "serde_json",
  "sha2",
  "thiserror",
 ]
