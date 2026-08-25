@@ -12,7 +12,7 @@ use crate::DpopError;
 /// The thumbprint is a canonical hash of the public key: only the
 /// required JWK members are serialized in a canonical order and hashed
 /// with SHA-256. It is used as the `cnf.jkt` value in access tokens
-/// (RFC 9449 p.6.1).
+/// (RFC 9449 sectrion 6.1).
 ///
 /// # Example
 ///
@@ -35,7 +35,7 @@ pub fn compute_jwk_thumbprint(jwk: &Jwk) -> Result<String, DpopError> {
 /// Compute the `ath` claim: base64url(SHA-256(access_token)).
 ///
 /// Binds a DPoP proof to a specific access token value, so a proof
-/// cannot be replayed with a different token (RFC 9449 p.4.2).
+/// cannot be replayed with a different token (RFC 9449 sectrion 4.2).
 ///
 /// # Example
 ///

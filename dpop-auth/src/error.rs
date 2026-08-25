@@ -35,10 +35,6 @@ pub enum DpopError {
     #[error("proof signature or structure invalid: {0}")]
     InvalidSignature(String),
 
-    /// The `jwk` header contains a private key, which RFC 9449 forbids.
-    #[error("jwk must not contain a private key")]
-    JwkPrivateKey,
-
     /// The `htm` claim does not match the request method.
     #[error("htm mismatch: expected {expected}, got {got}")]
     HtmMismatch {
@@ -60,11 +56,11 @@ pub enum DpopError {
     #[error("proof expired (iat out of window)")]
     Expired,
 
-    /// A nonce is required on the token endpoint (RFC 9449 p. 8).
+    /// A nonce is required on the token endpoint (RFC 9449 section 8).
     #[error("nonce required on token endpoint")]
     TokenNonceRequired(String),
 
-    /// A nonce is required on a protected resource (RFC 9449 p.9).
+    /// A nonce is required on a protected resource (RFC 9449 section 9).
     #[error("nonce required on protected resource")]
     ResourceNonceRequired(String),
 
