@@ -8,7 +8,9 @@
 //! A reusable library that validates DPoP proofs, issues and verifies
 //! sender-constrained access tokens, and manages opaque refresh tokens.
 
+pub mod cache;
 pub mod crypto;
+pub mod dpop;
 pub mod error;
 
 pub use error::DpopError;
