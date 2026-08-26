@@ -1,5 +1,7 @@
 //! DPoP proof validation (RFC 9449, section 4.3).
 
+use std::time::Duration;
+
 use jsonwebtoken::{
     Algorithm, DecodingKey, Validation, decode, decode_header,
     errors::ErrorKind,
@@ -18,8 +20,6 @@ use crate::{
 
 /// Maximum accepted size of a DPoP proof, in bytes (RFC 9449, section 11.1).
 const MAX_PROOF_LEN: usize = 8192;
-/// Freshness
-const IAT_WINDOW_SECS: u64 = 60;
 
 /// The claims carried by a DPoP proof JWT.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,7 +47,7 @@ pub struct ValidatedProof {
     /// The validated claims.
     pub claims: DpopClaims,
     /// The JWK thumbprint, used as the `cnf.jkt` value in access tokens.
-    pub jwk_tbumbprint: String,
+    pub jwk_thumbprint: String,
 }
 
 /// Everything needed to validate a DPoP proof for one request.
@@ -65,6 +65,10 @@ pub struct ValidationContext<'a> {
     pub access_token: Option<&'a str>,
     /// Whether the server requires a valid nonce is the proof.
     pub nonce_required: bool,
+    /// Allowed clock skew for the `iat` freshness window.
+    pub clock_skew: Duration,
+    /// JWS algorithms accepted for the proof.
+    pub allowed_algs: &'a [Algorithm],
     /// Cache of already-seen `jti` values.
     pub jti_cache: &'a JtiCache,
     /// Cache of nonces issued by this server.
@@ -83,6 +87,8 @@ pub async fn validate_dpop_proof(ctx: ValidationContext<'_>) -> Result<Validated
         expected_htu,
         access_token,
         nonce_required,
+        clock_skew,
+        allowed_algs,
         jti_cache,
         nonce_cache,
     } = ctx;
@@ -103,11 +109,11 @@ pub async fn validate_dpop_proof(ctx: ValidationContext<'_>) -> Result<Validated
         return Err(DpopError::InvalidTyp(header.typ.unwrap_or_default()));
     }
 
-    if header.alg != Algorithm::ES256 && header.alg != Algorithm::PS256 {
+    if !allowed_algs.contains(&header.alg) {
         tracing::debug!("rejecting DPoP proof: alg {:?} not allowed", header.alg);
 
         return Err(DpopError::InvalidAlgorithm(format!(
-            "{:?} not allowed (use ES256 or PS256)",
+            "{:?} now allowed",
             header.alg
         )));
     }
@@ -116,7 +122,7 @@ pub async fn validate_dpop_proof(ctx: ValidationContext<'_>) -> Result<Validated
         .jwk
         .ok_or_else(|| DpopError::InvalidSignature("jwk missing in header".into()))?;
 
-    let jwk_tbumbprint = jwk
+    let jwk_thumbprint = jwk
         .thumbprint(ThumbprintHash::SHA256)
         .map_err(|_| DpopError::InvalidSignature("failed to compute JWK thumbprint".into()))?;
 
@@ -136,8 +142,9 @@ pub async fn validate_dpop_proof(ctx: ValidationContext<'_>) -> Result<Validated
         .claims;
 
     let now = jsonwebtoken::get_current_timestamp();
-    let in_window = claims.iat.saturating_sub(IAT_WINDOW_SECS) <= now
-        && now <= claims.iat.saturating_add(IAT_WINDOW_SECS);
+    let window = clock_skew.as_secs();
+    let in_window =
+        claims.iat.saturating_sub(window) <= now && now <= claims.iat.saturating_add(window);
     if !in_window {
         tracing::debug!("rejecting DPoP proof: iat {} outside window", claims.iat);
 
@@ -167,13 +174,14 @@ pub async fn validate_dpop_proof(ctx: ValidationContext<'_>) -> Result<Validated
     }
 
     if let Some(token) = access_token {
-        let computed = compute_ath(token);
-        let matches = claims
-            .ath
-            .as_deref()
-            .is_some_and(|provided| bool::from(provided.as_bytes().ct_eq(computed.as_bytes())));
+        let Some(provided_ath) = claims.ath.as_deref() else {
+            return Err(DpopError::InvalidSignature(
+                "missing ath claim in resource proof".into(),
+            ));
+        };
 
-        if !matches {
+        let computed = compute_ath(token);
+        if !bool::from(provided_ath.as_bytes().ct_eq(computed.as_bytes())) {
             return Err(DpopError::InvalidSignature("ath mismatch".into()));
         }
     }
@@ -188,7 +196,7 @@ pub async fn validate_dpop_proof(ctx: ValidationContext<'_>) -> Result<Validated
     Ok(ValidatedProof {
         jwk,
         claims,
-        jwk_tbumbprint,
+        jwk_thumbprint,
     })
 }
 
@@ -391,6 +399,9 @@ mod tests {
 
     // validation
 
+    const TEST_ALGS: &[Algorithm] = &[Algorithm::ES256, Algorithm::PS256];
+    const TEST_SKEW: Duration = Duration::from_secs(60);
+
     #[tokio::test]
     async fn valid_proof_is_accepted() {
         let client = TestClient::new();
@@ -406,11 +417,13 @@ mod tests {
             nonce_required: false,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await
         .unwrap();
 
-        assert_eq!(result.jwk_tbumbprint.len(), 43);
+        assert_eq!(result.jwk_thumbprint.len(), 43);
         assert_eq!(result.claims.htm, "POST");
     }
 
@@ -428,6 +441,8 @@ mod tests {
             nonce_required: false,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -448,6 +463,8 @@ mod tests {
             nonce_required: false,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -468,6 +485,8 @@ mod tests {
             nonce_required: false,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -488,6 +507,8 @@ mod tests {
             nonce_required: false,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -509,6 +530,8 @@ mod tests {
             nonce_required: false,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -530,6 +553,8 @@ mod tests {
             nonce_required: false,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -557,6 +582,8 @@ mod tests {
             nonce_required: false,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -584,6 +611,8 @@ mod tests {
             nonce_required: false,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -605,6 +634,8 @@ mod tests {
             nonce_required: false,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         };
 
         assert!(validate_dpop_proof(ctx()).await.is_ok());
@@ -636,6 +667,8 @@ mod tests {
             nonce_required: false,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -664,6 +697,8 @@ mod tests {
             nonce_required: false,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -685,6 +720,8 @@ mod tests {
             nonce_required: true,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -712,6 +749,8 @@ mod tests {
             nonce_required: true,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -741,6 +780,8 @@ mod tests {
             nonce_required: true,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -778,6 +819,8 @@ mod tests {
             nonce_required: true,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
@@ -789,6 +832,8 @@ mod tests {
             nonce_required: true,
             jti_cache: &jti_cache,
             nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
         })
         .await;
 
