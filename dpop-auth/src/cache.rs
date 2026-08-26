@@ -4,15 +4,28 @@ use std::time::Duration;
 
 use moka::future::Cache;
 
-/// Time-to-live of a `jti` entry: equal to the proof freshness window.
+/// Time-to-live of a `jti` entry.
+///
+/// Must be greater than or equal to the proof freshness window
+/// (`clock_skew`, default 60s). Keeping entries for 60s guarantees that
+/// an attacker cannot replay an intercepted proof:
+/// - Within 60s: rejected by `JtiCache`.
+/// - After 60s: rejected by `claims.iat` freshness window check (`DpopError::Expired`).
 const JTI_TTL: Duration = Duration::from_secs(60);
-/// Time-to-live of a nonce entry: long enough for a client round-trip.
+
+/// Time-to-live of a server-issued nonce entry (300s / 5 minutes).
+///
+/// Long enough to tolerate mobile latency and request retries.
+/// Multi-use is a permitted within this window per RFC 9449 section 11.1
+/// since `jti` tracking prevents proof replay.
 const NONCE_TTL: Duration = Duration::from_secs(300);
+
 /// Maximum number of entries per cache.
 const CACHE_CAPACITY: u64 = 100_000;
 
 /// Cache of already-seen `jti` values (single-use proof identifiers).
 pub type JtiCache = Cache<String, bool>;
+
 /// Cache of nonces issued by this server.
 pub type NonceCache = Cache<String, bool>;
 
