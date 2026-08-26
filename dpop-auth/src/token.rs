@@ -38,8 +38,12 @@ pub struct AccessTokenClaims {
     /// Application-specific claims.
     ///
     /// Reserved keys (`sub`, `iss`, `aud`, `exp`, `iat`, `jti`, `cnf`)
-    /// are owned by the library: a value for one of them here is ignored,
-    /// the named field wins.
+    /// are owned by the library.
+    ///
+    /// # Security Note
+    /// If an application attempts to put a reserved key into `extra`,
+    /// `serde` will reject the JSON during deserialization due to duplicate fields,
+    /// preventing claim injection attacks.
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -50,7 +54,7 @@ pub struct AccessTokenClaims {
 /// The reserved claims (`iss`, `aud`, `exp`, `iat`, `jti`, `cnf`)
 /// are filled by this function and must not be overridden vie `extra`.
 ///
-/// # NOTE
+/// # Security NOTE
 ///
 /// Expiry calculating note:
 /// Uses `saturating_add` to prevent overflow panics in debug mode
@@ -422,6 +426,112 @@ mod tests {
         assert!(
             matches!(strict, Err(DpopError::Expired)),
             "without leeway is must be expired"
+        );
+    }
+
+    #[test]
+    fn flatten_reserved_key_collision_prevention() {
+        let signer = symmetric();
+
+        let mut bad_extra = serde_json::Map::new();
+        bad_extra.insert("sub".to_string(), serde_json::json!("hacker-sub"));
+        bad_extra.insert("role".to_string(), serde_json::json!("admin"));
+
+        let token = issue_access_token(
+            &signer,
+            ISSUER,
+            AUDIENCE,
+            Duration::from_secs(900),
+            "real-user-123",
+            JKT,
+            bad_extra,
+        )
+        .unwrap();
+
+        let result = verify_access_token(
+            signer.algorithm(),
+            signer.decoding_key(),
+            &token,
+            ISSUER,
+            AUDIENCE,
+            CLOCK_SKEW,
+        );
+        assert!(
+            result.is_err(),
+            "duplicate reserved field in flatten must be rejected by serde"
+        );
+    }
+
+    #[test]
+    fn flatten_empty_extra_produces_flat_json() {
+        let signer = symmetric();
+        let token = issue_access_token(
+            &signer,
+            ISSUER,
+            AUDIENCE,
+            Duration::from_secs(900),
+            "user-1",
+            JKT,
+            Default::default(),
+        )
+        .unwrap();
+
+        let mut validation = Validation::new(signer.algorithm());
+        validation.validate_exp = false;
+        validation.set_issuer(&[ISSUER]);
+        validation.set_audience(&[AUDIENCE]);
+
+        let decoded =
+            jsonwebtoken::decode::<serde_json::Value>(&token, signer.decoding_key(), &validation)
+                .unwrap();
+
+        let obj = decoded.claims.as_object().unwrap();
+
+        assert!(obj.contains_key("sub"));
+        assert!(obj.contains_key("exp"));
+        assert!(obj.contains_key("cnf"));
+
+        assert!(!obj.contains_key("extra"));
+    }
+
+    #[test]
+    fn flatten_preserves_various_json_types() {
+        let signer = symmetric();
+
+        let mut complex_extra = serde_json::Map::new();
+        complex_extra.insert("age".to_string(), serde_json::json!(30));
+        complex_extra.insert("is_active".to_string(), serde_json::json!(true));
+        complex_extra.insert(
+            "permissions".to_string(),
+            serde_json::json!(["read", "write"]),
+        );
+
+        let token = issue_access_token(
+            &signer,
+            ISSUER,
+            AUDIENCE,
+            Duration::from_secs(900),
+            "user-1",
+            JKT,
+            complex_extra,
+        )
+        .unwrap();
+
+        let claims = verify_access_token(
+            signer.algorithm(),
+            signer.decoding_key(),
+            &token,
+            ISSUER,
+            AUDIENCE,
+            CLOCK_SKEW,
+        )
+        .unwrap();
+
+        assert_eq!(claims.extra["age"], serde_json::json!(30));
+        assert_eq!(claims.extra["is_active"], serde_json::json!(true));
+        assert_eq!(
+            claims.extra["permissions"],
+            serde_json::json!(["read", "write"])
         );
     }
 }
