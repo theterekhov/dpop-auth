@@ -367,6 +367,15 @@ mod tests {
     }
 
     #[test]
+    fn build_requires_signer() {
+        let result = DpopConfig::builder()
+            .public_url("https://auth.example.com")
+            .build();
+
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn from_env_errors_without_vars() {
         assert!(DpopConfig::from_env().is_err());
     }

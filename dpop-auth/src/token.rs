@@ -115,7 +115,6 @@ pub fn verify_access_token(
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
 
     use base64ct::{Base64UrlUnpadded, Encoding};
     use jsonwebtoken::EncodingKey;
