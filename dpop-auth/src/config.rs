@@ -307,3 +307,83 @@ impl DpopConfigBuilder {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    fn base_builder() -> DpopConfigBuilder {
+        DpopConfig::builder()
+            .public_url("https://auth.example.com")
+            .signer(TokenSigner::symmetric(b"test-secret"))
+    }
+
+    #[test]
+    fn builder_applies_defaults() {
+        let config = base_builder().build().unwrap();
+
+        assert_eq!(config.public_url, "https://auth.example.com");
+        assert_eq!(config.issuer, "https://auth.example.com");
+        assert_eq!(config.audience, "https://auth.example.com");
+        assert_eq!(config.clock_skew, Duration::from_secs(60));
+        assert!(!config.nonce_required);
+        assert_eq!(
+            config.allowed_algs,
+            vec![Algorithm::ES256, Algorithm::PS256]
+        );
+        assert_eq!(config.access_token_ttl, Duration::from_secs(900));
+        assert_eq!(
+            config.refresh_token_ttl,
+            Duration::from_secs(30 * 24 * 60 * 60)
+        );
+        assert_eq!(config.grace_period, Duration::from_secs(5));
+        assert!(config.allow_registration);
+    }
+
+    #[test]
+    fn issuer_and_audience_override() {
+        let config = base_builder()
+            .issuer("https://issuer.example.com")
+            .audience("my-api")
+            .clock_skew(Duration::from_secs(120))
+            .nonce_required(true)
+            .build()
+            .unwrap();
+
+        assert_eq!(config.issuer, "https://issuer.example.com");
+        assert_eq!(config.audience, "my-api");
+        assert_eq!(config.clock_skew, Duration::from_secs(120));
+        assert!(config.nonce_required);
+    }
+
+    #[test]
+    fn build_requires_public_url() {
+        let result = DpopConfig::builder()
+            .signer(TokenSigner::symmetric(b"secret"))
+            .build();
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn from_env_errors_without_vars() {
+        assert!(DpopConfig::from_env().is_err());
+    }
+
+    #[test]
+    fn signer_algorithm_is_correct() {
+        assert_eq!(TokenSigner::symmetric(b"x").algorithm(), Algorithm::HS256);
+    }
+
+    #[cfg(feature = "cookie")]
+    #[test]
+    fn cookie_defaults() {
+        let cookie = CookieConfig::default();
+
+        assert_eq!(cookie.name, "__Host-dpop_refresh");
+        assert!(cookie.secure);
+        assert!(cookie.http_only);
+        assert_eq!(cookie.same_site, SameSite::Strict);
+    }
+}

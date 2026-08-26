@@ -112,3 +112,317 @@ pub fn verify_access_token(
             _ => DpopError::InvalidSignature(e.to_string()),
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::thread;
+
+    use base64ct::{Base64UrlUnpadded, Encoding};
+    use jsonwebtoken::EncodingKey;
+    use p256::{SecretKey, ecdsa::SigningKey, elliptic_curve::Generate, pkcs8::EncodePrivateKey};
+
+    use super::*;
+
+    const ISSUER: &str = "https://auth.example.com";
+    const AUDIENCE: &str = "api";
+    const JKT: &str = "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I";
+    const CLOCK_SKEW: Duration = Duration::from_secs(60);
+
+    fn symmetric() -> TokenSigner {
+        TokenSigner::symmetric(b"test-secret")
+    }
+
+    fn asymmetric() -> TokenSigner {
+        let secret = SecretKey::generate();
+        let signing_key = SigningKey::from(&secret);
+        let verifying_key = signing_key.verifying_key();
+        let point = verifying_key.to_sec1_point(false);
+
+        let private_der = secret.to_pkcs8_der().unwrap();
+        let encoding_key = EncodingKey::from_ec_der(private_der.as_bytes());
+
+        let x = Base64UrlUnpadded::encode_string(point.x().unwrap());
+        let y = Base64UrlUnpadded::encode_string(point.y().unwrap());
+        let decoding_key = DecodingKey::from_ec_components(&x, &y).unwrap();
+
+        TokenSigner::asymmetric(encoding_key, decoding_key)
+    }
+
+    fn extra() -> serde_json::Map<String, serde_json::Value> {
+        serde_json::json!({"role": "customer", "tenant_id": "t-1"})
+            .as_object()
+            .unwrap()
+            .clone()
+    }
+
+    #[test]
+    fn hs256_issue_verify_roundtrip() {
+        let signer = symmetric();
+        let token = issue_access_token(
+            &signer,
+            ISSUER,
+            AUDIENCE,
+            Duration::from_secs(900),
+            "user-1",
+            JKT,
+            Default::default(),
+        )
+        .unwrap();
+
+        let claims = verify_access_token(
+            signer.algorithm(),
+            signer.decoding_key(),
+            &token,
+            ISSUER,
+            AUDIENCE,
+            CLOCK_SKEW,
+        )
+        .unwrap();
+
+        assert_eq!(claims.sub, "user-1");
+        assert_eq!(claims.cnf.jkt, JKT);
+        assert_eq!(claims.iss, ISSUER);
+        assert_eq!(claims.aud, AUDIENCE);
+    }
+
+    #[test]
+    fn es256_issue_verify_roundtrip() {
+        let signer = asymmetric();
+        let token = issue_access_token(
+            &signer,
+            ISSUER,
+            AUDIENCE,
+            Duration::from_secs(900),
+            "user-1",
+            JKT,
+            Default::default(),
+        )
+        .unwrap();
+
+        let claims = verify_access_token(
+            signer.algorithm(),
+            signer.decoding_key(),
+            &token,
+            ISSUER,
+            AUDIENCE,
+            CLOCK_SKEW,
+        )
+        .unwrap();
+
+        assert_eq!(claims.sub, "user-1");
+        assert_eq!(claims.cnf.jkt, JKT);
+    }
+
+    #[test]
+    fn extra_claims_preserved() {
+        let signer = symmetric();
+        let token = issue_access_token(
+            &signer,
+            ISSUER,
+            AUDIENCE,
+            Duration::from_secs(900),
+            "user-1",
+            JKT,
+            extra(),
+        )
+        .unwrap();
+
+        let claims = verify_access_token(
+            signer.algorithm(),
+            signer.decoding_key(),
+            &token,
+            ISSUER,
+            AUDIENCE,
+            CLOCK_SKEW,
+        )
+        .unwrap();
+
+        assert_eq!(claims.extra["role"], serde_json::json!("customer"));
+        assert_eq!(claims.extra["tenant_id"], serde_json::json!("t-1"));
+    }
+
+    #[test]
+    fn tampered_token_rejected() {
+        let signer = symmetric();
+        let token = issue_access_token(
+            &signer,
+            ISSUER,
+            AUDIENCE,
+            Duration::from_secs(900),
+            "user-1",
+            JKT,
+            Default::default(),
+        )
+        .unwrap();
+
+        let mut chars: Vec<char> = token.chars().collect();
+        let last = chars.len() - 1;
+        chars[last] = if chars[last] == 'A' { 'B' } else { 'A' };
+        let tampered: String = chars.into_iter().collect();
+
+        let result = verify_access_token(
+            signer.algorithm(),
+            signer.decoding_key(),
+            &tampered,
+            ISSUER,
+            AUDIENCE,
+            CLOCK_SKEW,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn expired_token_rejected() {
+        let signer = symmetric();
+        let now = jsonwebtoken::get_current_timestamp();
+
+        let claims = AccessTokenClaims {
+            sub: "user-1".into(),
+            iss: ISSUER.into(),
+            aud: AUDIENCE.into(),
+            exp: now - 3600,
+            iat: now - 3600,
+            jti: uuid::Uuid::new_v4().to_string(),
+            cnf: Confirmation { jkt: JKT.into() },
+            extra: Default::default(),
+        };
+
+        let header = Header::new(signer.algorithm());
+        let token = encode(&header, &claims, signer.encoding_key()).unwrap();
+
+        let result = verify_access_token(
+            signer.algorithm(),
+            signer.decoding_key(),
+            &token,
+            ISSUER,
+            AUDIENCE,
+            CLOCK_SKEW,
+        );
+
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DpopError::Expired)));
+    }
+
+    #[test]
+    fn wrong_issuer_rejected() {
+        let signer = symmetric();
+        let token = issue_access_token(
+            &signer,
+            ISSUER,
+            AUDIENCE,
+            Duration::from_secs(900),
+            "user-1",
+            JKT,
+            Default::default(),
+        )
+        .unwrap();
+
+        let result = verify_access_token(
+            signer.algorithm(),
+            signer.decoding_key(),
+            &token,
+            "https://evil.com",
+            AUDIENCE,
+            CLOCK_SKEW,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn wrong_audience_rejected() {
+        let signer = symmetric();
+        let token = issue_access_token(
+            &signer,
+            ISSUER,
+            AUDIENCE,
+            Duration::from_secs(900),
+            "user-1",
+            JKT,
+            Default::default(),
+        )
+        .unwrap();
+
+        let result = verify_access_token(
+            signer.algorithm(),
+            signer.decoding_key(),
+            &token,
+            ISSUER,
+            "other-api",
+            CLOCK_SKEW,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn expired_maps_to_expired_variant() {
+        let signer = symmetric();
+        let now = jsonwebtoken::get_current_timestamp();
+
+        let claims = AccessTokenClaims {
+            sub: "user-1".into(),
+            iss: ISSUER.into(),
+            aud: AUDIENCE.into(),
+            exp: now - 3600,
+            iat: now - 3600,
+            jti: uuid::Uuid::new_v4().to_string(),
+            cnf: Confirmation { jkt: JKT.into() },
+            extra: Default::default(),
+        };
+        let header = Header::new(signer.algorithm());
+        let token = encode(&header, &claims, signer.encoding_key()).unwrap();
+
+        let result = verify_access_token(
+            signer.algorithm(),
+            signer.decoding_key(),
+            &token,
+            ISSUER,
+            AUDIENCE,
+            CLOCK_SKEW,
+        );
+
+        assert!(matches!(result, Err(DpopError::Expired)));
+    }
+
+    #[test]
+    fn token_within_leeway_accepted() {
+        let signer = symmetric();
+        let now = jsonwebtoken::get_current_timestamp();
+
+        let claims = AccessTokenClaims {
+            sub: "user-1".into(),
+            iss: ISSUER.into(),
+            aud: AUDIENCE.into(),
+            exp: now - 59,
+            iat: now - 59,
+            jti: uuid::Uuid::new_v4().to_string(),
+            cnf: Confirmation { jkt: JKT.into() },
+            extra: Default::default(),
+        };
+
+        let header = Header::new(signer.algorithm());
+        let token = encode(&header, &claims, signer.encoding_key()).unwrap();
+
+        let ok = verify_access_token(
+            signer.algorithm(),
+            signer.decoding_key(),
+            &token,
+            ISSUER,
+            AUDIENCE,
+            Duration::from_secs(60),
+        );
+        assert!(ok.is_ok(), "token within leeway must be accepted");
+
+        let strict = verify_access_token(
+            signer.algorithm(),
+            signer.decoding_key(),
+            &token,
+            ISSUER,
+            AUDIENCE,
+            Duration::ZERO,
+        );
+        assert!(
+            matches!(strict, Err(DpopError::Expired)),
+            "without leeway is must be expired"
+        );
+    }
+}
