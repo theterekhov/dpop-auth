@@ -9,9 +9,12 @@
 //! sender-constrained access tokens, and manages opaque refresh tokens.
 
 pub mod cache;
+pub mod config;
 pub mod crypto;
 pub mod dpop;
 pub mod error;
+pub mod token;
 
+pub use config::{DpopConfig, TokenSigner};
 pub use error::DpopError;
 pub use jsonwebtoken::jwk::Jwk;
