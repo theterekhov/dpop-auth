@@ -13,8 +13,14 @@ pub mod config;
 pub mod crypto;
 pub mod dpop;
 pub mod error;
+pub mod extractor;
+pub mod middleware;
+pub mod state;
 pub mod token;
 
 pub use config::{DpopConfig, TokenSigner};
 pub use error::DpopError;
+pub use extractor::{DpopSession, FromExtra};
 pub use jsonwebtoken::jwk::Jwk;
+pub use middleware::DpopLayer;
+pub use state::DpopState;
