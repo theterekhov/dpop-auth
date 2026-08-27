@@ -1,5 +1,7 @@
 //! Error types for DPoP proof validation and token handling.
 
+use axum::response::{IntoResponse, Response};
+use http::{HeaderValue, StatusCode, header};
 use thiserror::Error;
 
 /// Errors raised while validating a DPoP proof or handling tokens.
@@ -67,6 +69,67 @@ pub enum DpopError {
     /// An internal error occurred.
     #[error("internal error: {0}")]
     Internal(String),
+}
+
+const DPOP_NONCE: &str = "DPoP-Nonce";
+const EXPOSE_HEADERS: &str = "DPoP-Nonce, WWW-Authenticate";
+const CHALLENGE_INVALID: &str = r#"DPoP error="invalid_dpop_proof""#;
+const CHALLENGE_NONCE: &str = r#"DPoP error="use_dpop_nonce""#;
+
+fn insert_nonce(resp: &mut Response, nonce: &str) {
+    if let Ok(value) = HeaderValue::from_str(nonce) {
+        resp.headers_mut().insert(DPOP_NONCE, value);
+    }
+}
+
+fn expose(resp: &mut Response) {
+    resp.headers_mut().insert(
+        header::ACCESS_CONTROL_EXPOSE_HEADERS,
+        HeaderValue::from_static(EXPOSE_HEADERS),
+    );
+}
+
+impl IntoResponse for DpopError {
+    fn into_response(self) -> axum::response::Response {
+        match self {
+            DpopError::TokenNonceRequired(nonce) => {
+                let mut resp = (
+               	StatusCode::BAD_REQUEST,
+                r#"{"error":"use_dpop_nonce","error_description":"DPoP proof requires a nonce"}"#
+                ).into_response();
+
+                insert_nonce(&mut resp, &nonce);
+                expose(&mut resp);
+                resp
+            }
+            DpopError::ResourceNonceRequired(nonce) => {
+                let mut resp = StatusCode::UNAUTHORIZED.into_response();
+                resp.headers_mut().insert(
+                    header::WWW_AUTHENTICATE,
+                    HeaderValue::from_static(CHALLENGE_NONCE),
+                );
+
+                insert_nonce(&mut resp, &nonce);
+                expose(&mut resp);
+                resp
+            }
+            DpopError::Internal(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                r#"{"error":"internal_error"}"#,
+            )
+                .into_response(),
+            _ => {
+                let mut resp = StatusCode::UNAUTHORIZED.into_response();
+                resp.headers_mut().insert(
+                    header::WWW_AUTHENTICATE,
+                    HeaderValue::from_static(CHALLENGE_INVALID),
+                );
+
+                expose(&mut resp);
+                resp
+            }
+        }
+    }
 }
 
 #[cfg(test)]
