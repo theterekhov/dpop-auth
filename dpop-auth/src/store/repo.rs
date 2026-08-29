@@ -43,6 +43,10 @@ pub async fn create_user(
     .await
 }
 
+/// Create a login identifier for a user.
+///
+/// `value` is normalized to lowercase before insert
+/// (the UNIQUE index on `LOWER(value)` remains as defense-in-depth).
 pub async fn create_identifier(
     conn: &mut PgConnection,
     user_id: Uuid,
@@ -392,4 +396,303 @@ pub async fn count_recent_failed_attempts(
     )
     .fetch_one(conn)
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use sqlx::PgPool;
+
+    use super::*;
+
+    async fn create_test_user(conn: &mut PgConnection, email: &str) -> UserRow {
+        let user = create_user(conn, "Test User", "hash", Some(Utc::now()))
+            .await
+            .unwrap();
+
+        create_identifier(conn, user.id, "email", email, true, Some(Utc::now()))
+            .await
+            .unwrap();
+
+        user
+    }
+
+    #[sqlx::test]
+    async fn create_user_and_find_by_id(pool: PgPool) {
+        let mut conn = pool.acquire().await.unwrap();
+        let user = create_user(&mut conn, "Alice", "hash", None).await.unwrap();
+
+        assert_eq!(user.name, "Alice");
+        assert!(user.password_changed_at.is_none());
+
+        let found = find_user_by_id(&mut conn, user.id).await.unwrap().unwrap();
+        assert_eq!(found.id, user.id);
+        assert_eq!(found.public_id, user.public_id);
+    }
+
+    #[sqlx::test]
+    async fn create_identifier_and_find_by_identifier(pool: PgPool) {
+        let mut conn = pool.acquire().await.unwrap();
+        let user = create_user(&mut conn, "Alice", "hash", Some(Utc::now()))
+            .await
+            .unwrap();
+
+        create_identifier(
+            &mut conn,
+            user.id,
+            "email",
+            "Alice@Example.com",
+            true,
+            Some(Utc::now()),
+        )
+        .await
+        .unwrap();
+
+        let found = find_user_by_identifier(&mut conn, "email", "alice@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.id, user.id);
+    }
+
+    #[sqlx::test]
+    async fn find_by_identifier_is_case_insensitive(pool: PgPool) {
+        let mut conn = pool.acquire().await.unwrap();
+        create_test_user(&mut conn, "User@Example.com").await;
+
+        let found = find_user_by_identifier(&mut conn, "email", "user@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.name, "Test User");
+
+        let missing = find_user_by_identifier(&mut conn, "email", "nobody@example.com")
+            .await
+            .unwrap();
+        assert!(missing.is_none());
+    }
+
+    #[sqlx::test]
+    async fn identifiers_distinguish_kind(pool: PgPool) {
+        let mut conn = pool.acquire().await.unwrap();
+        let user = create_user(&mut conn, "Alice", "hash", Some(Utc::now()))
+            .await
+            .unwrap();
+
+        create_identifier(
+            &mut conn,
+            user.id,
+            "email",
+            "alice@example.com",
+            true,
+            Some(Utc::now()),
+        )
+        .await
+        .unwrap();
+        create_identifier(&mut conn, user.id, "username", "alice", false, None)
+            .await
+            .unwrap();
+
+        let by_email = find_user_by_identifier(&mut conn, "email", "alice@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(by_email.id, user.id);
+
+        let by_username = find_user_by_identifier(&mut conn, "username", "alice")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(by_username.id, user.id);
+
+        let wrong_kind = find_user_by_identifier(&mut conn, "phone", "alice")
+            .await
+            .unwrap();
+        assert!(wrong_kind.is_none());
+    }
+
+    #[sqlx::test]
+    async fn update_password_marks_changed(pool: PgPool) {
+        let mut conn = pool.acquire().await.unwrap();
+        let user = create_user(&mut conn, "ALice", "old", None).await.unwrap();
+        assert!(user.password_changed_at.is_none());
+
+        update_password(&mut conn, user.id, "new").await.unwrap();
+
+        let updated = find_user_by_id(&mut conn, user.id).await.unwrap().unwrap();
+        assert_eq!(updated.password_hash, "new");
+        assert!(updated.password_changed_at.is_some());
+    }
+
+    #[sqlx::test]
+    async fn create_refresh_token_and_find_by_hash(pool: PgPool) {
+        let mut conn = pool.acquire().await.unwrap();
+        let user = create_user(&mut conn, "Alice", "hash", Some(Utc::now()))
+            .await
+            .unwrap();
+
+        let fam = Uuid::new_v4();
+        let row = create_refresh_token(
+            &mut conn,
+            CreateRefreshTokenParams {
+                user_id: user.id,
+                token_hash: "abc".to_string(),
+                fam,
+                dpop_jkt: "jkt".to_string(),
+                user_agent: None,
+                expires_at: Utc::now() + chrono::Duration::days(30),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(row.fam, fam);
+        assert!(row.revoked_at.is_none());
+
+        let found = find_refresh_token_by_hash(&mut conn, "abc")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.id, row.id);
+    }
+
+    #[sqlx::test]
+    async fn revoke_tokens_sets_revoked_at(pool: PgPool) {
+        let mut conn = pool.acquire().await.unwrap();
+        let user = create_user(&mut conn, "Alice", "hash", Some(Utc::now()))
+            .await
+            .unwrap();
+        let row = create_refresh_token(
+            &mut conn,
+            CreateRefreshTokenParams {
+                user_id: user.id,
+                token_hash: "abc".to_string(),
+                fam: Uuid::new_v4(),
+                dpop_jkt: "jkt".to_string(),
+                user_agent: None,
+                expires_at: Utc::now() + chrono::Duration::days(30),
+            },
+        )
+        .await
+        .unwrap();
+
+        revoke_refresh_token(&mut conn, row.id).await.unwrap();
+
+        let found = find_refresh_token_by_hash(&mut conn, "abc")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(found.revoked_at.is_some());
+    }
+
+    #[sqlx::test]
+    async fn revoke_family_revokes_all(pool: PgPool) {
+        let mut conn = pool.acquire().await.unwrap();
+        let user = create_user(&mut conn, "Alice", "hash", Some(Utc::now()))
+            .await
+            .unwrap();
+        let fam = Uuid::new_v4();
+
+        for i in 0..2 {
+            create_refresh_token(
+                &mut conn,
+                CreateRefreshTokenParams {
+                    user_id: user.id,
+                    token_hash: format!("hash-{i}"),
+                    fam,
+                    dpop_jkt: "jkt".to_string(),
+                    user_agent: None,
+                    expires_at: Utc::now() + chrono::Duration::days(30),
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        revoke_refresh_token_family(&mut conn, fam).await.unwrap();
+
+        for i in 0..2 {
+            let found = find_refresh_token_by_hash(&mut conn, &format!("hash-{i}"))
+                .await
+                .unwrap()
+                .unwrap();
+
+            assert!(found.revoked_at.is_some());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_login_attempts {
+    use std::net::IpAddr;
+
+    use sqlx::PgPool;
+
+    use super::*;
+
+    #[sqlx::test]
+    async fn record_login_attempt_and_count_failed(pool: PgPool) {
+        let mut conn = pool.acquire().await.unwrap();
+        let ip: IpNetwork = "203.0.133.7".parse::<IpAddr>().unwrap().into();
+        let since = Utc::now() - chrono::Duration::minutes(5);
+
+        record_login_attempt(
+            &mut conn,
+            "email",
+            "User@EXAMPLE.com",
+            ip,
+            false,
+            Some("wrong_password"),
+        )
+        .await
+        .unwrap();
+        record_login_attempt(
+            &mut conn,
+            "email",
+            "user@example.com",
+            ip,
+            false,
+            Some("wrong_password"),
+        )
+        .await
+        .unwrap();
+        record_login_attempt(&mut conn, "email", "user@example.com", ip, true, None)
+            .await
+            .unwrap();
+
+        let count = count_recent_failed_attempts(&mut conn, "email", "user@example.com", since)
+            .await
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[sqlx::test]
+    async fn count_recent_failed_respects_windows(pool: PgPool) {
+        let mut conn = pool.acquire().await.unwrap();
+        let ip: IpNetwork = "203.0.113.7".parse::<IpAddr>().unwrap().into();
+
+        record_login_attempt(
+            &mut conn,
+            "email",
+            "user@example.com",
+            ip,
+            false,
+            Some("wrong"),
+        )
+        .await
+        .unwrap();
+
+        // window includes the attempt
+        let past = Utc::now() - chrono::Duration::hours(1);
+        let count = count_recent_failed_attempts(&mut conn, "email", "user@example.com", past)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // window in the future excludes the attempt
+        let future = Utc::now() + chrono::Duration::hours(1);
+        let count = count_recent_failed_attempts(&mut conn, "email", "user@example.com", future)
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+    }
 }

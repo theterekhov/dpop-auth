@@ -31,13 +31,13 @@ CREATE INDEX IF NOT EXISTS idx_dpop_users_created
 	WHERE deleted_at IS NULL;
 
 -- TRIGGER
-CREATE TRIGGER IF NOT EXISTS trg_dpop_users_updated
+CREATE TRIGGER trg_dpop_users_updated
 	BEFORE UPDATE ON dpop_users
 	FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- IDENTIFIERS
 -- TABLE
-CREATE TABLE IF NOT EXISTS dpop_identifier (
+CREATE TABLE IF NOT EXISTS dpop_identifiers (
 	id UUID PRIMARY KEY DEFAULT uuidv7(),
 	user_id UUID NOT NULL REFERENCES dpop_users(id) ON DELETE CASCADE,
 	kind VARCHAR(32) NOT NULL, -- examples: email, login, phone and etc.
@@ -51,18 +51,18 @@ CREATE TABLE IF NOT EXISTS dpop_identifier (
 
 -- INDEXES
 CREATE UNIQUE INDEX IF NOT EXISTS uq_dpop_identifiers_kind_value
-	ON dpop_identifier (kind, LOWER(value))
+	ON dpop_identifiers (kind, LOWER(value))
 	WHERE deleted_at IS NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_dpop_identifiers_user_primary
-	ON dpop_identifier (user_id, kind)
+	ON dpop_identifiers (user_id, kind)
 	WHERE is_primary = TRUE AND deleted_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_dpop_identifiers_user
-	ON dpop_identifier (user_id)
+	ON dpop_identifiers (user_id)
 	WHERE deleted_at IS NULL;
 
 -- TRIGGER
-CREATE TRIGGER IF NOT EXISTS trg_dpop_identifiers_updated
-	BEFORE UPDATE ON dpop_identifier
+CREATE TRIGGER trg_dpop_identifiers_updated
+	BEFORE UPDATE ON dpop_identifiers
 	FOR EACH ROW EXECUTE FUNCTION set_updated_at();
