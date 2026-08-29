@@ -17,6 +17,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 default = []
 cookie = []
+postgres = ["dep:sqlx", "dep:chrono"]
 
 [dependencies]
 jsonwebtoken.workspace = true
@@ -34,6 +35,9 @@ serde_json.workspace = true
 axum.workspace = true
 tower.workspace = true
 http.workspace = true
+tokio.workspace = true
+sqlx = { workspace = true, optional = true}
+chrono = { workspace = true, optional = true}
 
 [dev-dependencies]
 p256 = { version = "0.14.0", features = ["ecdsa"] }
