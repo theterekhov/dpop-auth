@@ -18,6 +18,9 @@ pub mod middleware;
 pub mod state;
 pub mod token;
 
+#[cfg(feature = "postgres")]
+pub mod store;
+
 pub use config::{DpopConfig, TokenSigner};
 pub use error::DpopError;
 pub use extractor::{DpopSession, FromExtra};
