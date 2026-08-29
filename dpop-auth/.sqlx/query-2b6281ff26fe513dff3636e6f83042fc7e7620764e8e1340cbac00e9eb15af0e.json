@@ -1,0 +1,124 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tSELECT\n\t\t\tid,\n\t\t\tuser_id,\n\t\t\ttoken_hash,\n\t\t\tfam,\n\t\t\tdpop_jkt,\n\t\t\tuser_agent,\n\t\t\texpires_at,\n\t\t\trevoked_at,\n\t\t\tcreated_at\n\t\tFROM dpop_refresh_tokens\n\t\tWHERE token_hash = $1\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dpop_refresh_tokens",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dpop_refresh_tokens",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "token_hash",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dpop_refresh_tokens",
+            "name": "token_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "fam",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dpop_refresh_tokens",
+            "name": "fam"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "dpop_jkt",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "dpop_refresh_tokens",
+            "name": "dpop_jkt"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "user_agent",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dpop_refresh_tokens",
+            "name": "user_agent"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_refresh_tokens",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "revoked_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_refresh_tokens",
+            "name": "revoked_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_refresh_tokens",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "2b6281ff26fe513dff3636e6f83042fc7e7620764e8e1340cbac00e9eb15af0e"
+}

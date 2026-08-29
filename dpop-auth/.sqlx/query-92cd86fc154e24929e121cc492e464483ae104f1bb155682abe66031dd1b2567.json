@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tSELECT COUNT(*) as \"count!\"\n\t\tFROM dpop_login_attempts\n\t\tWHERE identifier_kind = $1\n\t\t\tAND LOWER(identifier_value) = $2\n\t\t\tAND success = false\n\t\t\tAND created_at >= $3\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "92cd86fc154e24929e121cc492e464483ae104f1bb155682abe66031dd1b2567"
+}

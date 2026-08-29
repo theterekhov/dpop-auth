@@ -1,0 +1,162 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tINSERT INTO dpop_users (\n\t\t\tpassword_hash,\n\t\t\tname,\n\t\t\tpassword_changed_at\n\t\t) VALUES ($1, $2, $3)\n\t\tRETURNING\n\t\t\tid,\n\t\t\tpublic_id,\n\t\t\tpassword_hash,\n\t\t\tname,\n\t\t\tpassword_changed_at,\n\t\t\ttotp_secret,\n\t\t\ttotp_enabled,\n\t\t\ttotp_enabled_at,\n\t\t\tlast_login_at,\n\t\t\tcreated_at,\n\t\t\tupdated_at,\n\t\t\tdeleted_at\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "public_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "public_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "password_hash",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "password_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "password_changed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "password_changed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "totp_secret",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "totp_secret"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "totp_enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "totp_enabled"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "totp_enabled_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "totp_enabled_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "last_login_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "last_login_at"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "deleted_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "deleted_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "6b4b7df30ebd0e372cd8ccb4b614f0e8317663505beefcd097858f912d5189eb"
+}
