@@ -113,7 +113,7 @@ pub async fn validate_dpop_proof(ctx: ValidationContext<'_>) -> Result<Validated
         tracing::debug!("rejecting DPoP proof: alg {:?} not allowed", header.alg);
 
         return Err(DpopError::InvalidAlgorithm(format!(
-            "{:?} now allowed",
+            "{:?} not allowed",
             header.alg
         )));
     }

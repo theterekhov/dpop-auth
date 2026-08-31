@@ -2,12 +2,12 @@
 
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
-const MAX_CONNTECTIONS: u32 = 10;
+const MAX_CONNECTIONS: u32 = 10;
 
 /// Create a PostgreSQL connection pool.
 pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
     PgPoolOptions::new()
-        .max_connections(MAX_CONNTECTIONS)
+        .max_connections(MAX_CONNECTIONS)
         .connect(database_url)
         .await
 }
