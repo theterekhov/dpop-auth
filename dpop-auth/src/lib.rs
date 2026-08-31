@@ -18,6 +18,8 @@ pub mod middleware;
 pub mod state;
 pub mod token;
 
+#[cfg(feature = "cookie")]
+pub mod cookie;
 #[cfg(feature = "postgres")]
 pub mod store;
 
@@ -27,3 +29,6 @@ pub use extractor::{DpopSession, FromExtra};
 pub use jsonwebtoken::jwk::Jwk;
 pub use middleware::DpopLayer;
 pub use state::DpopState;
+
+#[cfg(feature = "postgres")]
+pub use store::{AuthService, LoginOutcome, ServiceError, TokenPair};

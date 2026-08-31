@@ -323,6 +323,56 @@ pub async fn revoke_refresh_token_family(
     .map(|_| ())
 }
 
+/// Atomically revoke a refresh token if it is still active (`revoked_at IS NULL`).
+///
+/// Returns the revoked row on success. Returns `None` if the token was already
+/// revoked or does not exist - the caller inspects the original row
+/// (via a separate query) to distinguish grace from reuse.
+pub async fn revoke_refresh_token_if_active(
+    conn: &mut PgConnection,
+    token_hash: &str,
+) -> Result<Option<RefreshTokenRow>, sqlx::Error> {
+    sqlx::query_as!(
+        RefreshTokenRow,
+        r#"
+		UPDATE dpop_refresh_tokens SET revoked_at = now()
+		WHERE token_hash = $1
+			AND revoked_at IS NULL
+		RETURNING
+			id,
+			user_id,
+			token_hash,
+			fam,
+			dpop_jkt,
+			user_agent,
+			expires_at,
+			created_at,
+			revoked_at
+		"#,
+        token_hash
+    )
+    .fetch_optional(conn)
+    .await
+}
+
+/// Revoke a refresh token by its hash (idempotent).
+pub async fn revoke_refresh_token_by_hash(
+    conn: &mut PgConnection,
+    token_hash: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+		UPDATE dpop_refresh_tokens SET revoked_at = now()
+		WHERE token_hash = $1
+			AND revoked_at IS NULL
+		"#,
+        token_hash
+    )
+    .execute(conn)
+    .await
+    .map(|_| ())
+}
+
 /// Revoke every refresh token of a user.
 pub async fn revoke_all_refresh_tokens_for_user(
     conn: &mut PgConnection,
