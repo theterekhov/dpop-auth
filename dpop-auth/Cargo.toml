@@ -16,8 +16,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
-cookie = []
-postgres = ["dep:sqlx", "dep:chrono"]
+cookie = ["dep:axum-extra", "dep:time"]
+postgres = ["dep:sqlx", "dep:chrono", "dep:argon2", "dep:getrandom"]
 
 [dependencies]
 jsonwebtoken.workspace = true
@@ -38,6 +38,10 @@ http.workspace = true
 tokio.workspace = true
 sqlx = { workspace = true, optional = true}
 chrono = { workspace = true, optional = true}
+axum-extra = {workspace = true, optional = true}
+argon2 = {workspace = true, optional = true}
+getrandom = {workspace = true, optional = true}
+time = {workspace = true, optional = true}
 
 [dev-dependencies]
 p256 = { version = "0.14.0", features = ["ecdsa"] }

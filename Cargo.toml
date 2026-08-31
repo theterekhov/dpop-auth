@@ -28,3 +28,7 @@ http = "1.5.0"
 sqlx = { version = "0.9.0", features = ["postgres", "runtime-tokio", "uuid", "chrono", "migrate", "ipnetwork"] }
 chrono = "0.4.45"
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
+argon2 = {version = "0.6.0", features = ["password-hash"]}
+axum-extra = {version = "0.12.6", features = ["cookie"]}
+getrandom = "0.4.3"
+time = "0.3.55"
