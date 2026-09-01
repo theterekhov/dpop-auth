@@ -31,4 +31,6 @@ pub use middleware::DpopLayer;
 pub use state::DpopState;
 
 #[cfg(feature = "postgres")]
+pub use store::TenantTx;
+#[cfg(feature = "postgres")]
 pub use store::{AuthService, LoginOutcome, ServiceError, TokenPair};
