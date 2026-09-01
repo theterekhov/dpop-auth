@@ -578,3 +578,430 @@ impl AuthService {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{net::Ipv4Addr, time::Duration};
+
+    use sqlx::PgPool;
+
+    use crate::TokenSigner;
+
+    use super::*;
+
+    const TEST_JKT: &str = "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I";
+    const TEST_PASSWORD: &str = "correct horse battery staple";
+
+    fn test_ip() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7))
+    }
+
+    fn build_service(
+        pool: &PgPool,
+        grace: Duration,
+        refresh_ttl: Duration,
+        allow_registration: bool,
+    ) -> AuthService {
+        let signer = TokenSigner::symmetric(b"test-secret-key");
+        let config = DpopConfig::builder()
+            .public_url("https://example.com")
+            .signer(signer)
+            .grace_period(grace)
+            .refresh_token_ttl(refresh_ttl)
+            .allow_registration(allow_registration)
+            .build()
+            .unwrap();
+
+        AuthService::new(pool.clone(), config)
+    }
+
+    fn service(pool: &PgPool) -> AuthService {
+        build_service(
+            pool,
+            Duration::from_secs(5),
+            Duration::from_secs(30 * 24 * 60 * 60),
+            true,
+        )
+    }
+
+    async fn register_user(service: &AuthService) -> TokenPair {
+        service
+            .register(RegisterParams {
+                kind: "email",
+                value: "john@example.com",
+                password: TEST_PASSWORD,
+                name: "John",
+                jkt: TEST_JKT,
+                client_ip: test_ip(),
+                user_agent: None,
+            })
+            .await
+            .unwrap()
+    }
+
+    async fn refresh_expiry(pool: &PgPool, secret: &str) -> DateTime<Utc> {
+        let mut conn = pool.acquire().await.unwrap();
+
+        repo::find_refresh_token_by_hash(&mut conn, &hash_token(secret.as_bytes()))
+            .await
+            .unwrap()
+            .unwrap()
+            .expires_at
+    }
+
+    // register
+
+    #[sqlx::test]
+    async fn register_creates_user_and_issues_tokens(pool: PgPool) {
+        let service = service(&pool);
+        let tokens = register_user(&service).await;
+
+        assert!(!tokens.access_token.is_empty());
+        assert!(!tokens.refresh_token.is_empty());
+        assert_eq!(tokens.token_type, "DPoP");
+        assert!(tokens.expires_in > 0);
+
+        let mut conn = pool.acquire().await.unwrap();
+        let user = repo::find_user_by_identifier(&mut conn, "email", "john@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(user.name, "John");
+    }
+
+    #[sqlx::test]
+    async fn register_conflicts_on_duplicate_identifier(pool: PgPool) {
+        let service = service(&pool);
+        register_user(&service).await;
+
+        let err = service
+            .register(RegisterParams {
+                kind: "email",
+                value: "john@example.com",
+                password: TEST_PASSWORD,
+                name: "John",
+                jkt: TEST_JKT,
+                client_ip: test_ip(),
+                user_agent: None,
+            })
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ServiceError::Conflict(_)));
+    }
+
+    #[sqlx::test]
+    async fn register_conflict_is_case_insensitive(pool: PgPool) {
+        let service = service(&pool);
+        register_user(&service).await;
+
+        let err = service
+            .register(RegisterParams {
+                kind: "email",
+                value: "JOHN@EXAMPLE.COM",
+                password: TEST_PASSWORD,
+                name: "John",
+                jkt: TEST_JKT,
+                client_ip: test_ip(),
+                user_agent: None,
+            })
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ServiceError::Conflict(_)));
+    }
+
+    #[sqlx::test]
+    async fn register_disabled_returns_error(pool: PgPool) {
+        let service = build_service(
+            &pool,
+            Duration::from_secs(5),
+            Duration::from_secs(30 * 24 * 60 * 60),
+            false,
+        );
+
+        let err = service
+            .register(RegisterParams {
+                kind: "email",
+                value: "john@example.com",
+                password: TEST_PASSWORD,
+                name: "John",
+                jkt: TEST_JKT,
+                client_ip: test_ip(),
+                user_agent: None,
+            })
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ServiceError::RegistrationDisabled));
+    }
+
+    // login
+
+    #[sqlx::test]
+    async fn login_success_issues_tokens(pool: PgPool) {
+        let service = service(&pool);
+        register_user(&service).await;
+
+        let outcome = service
+            .login(
+                "email",
+                "john@example.com",
+                TEST_PASSWORD,
+                TEST_JKT,
+                test_ip(),
+                None,
+            )
+            .await
+            .unwrap();
+
+        match outcome {
+            LoginOutcome::Success { tokens } => assert!(!tokens.access_token.is_empty()),
+            _ => panic!("expected Success"),
+        }
+    }
+
+    #[sqlx::test]
+    async fn login_wrong_password_returns_unauthorized(pool: PgPool) {
+        let service = service(&pool);
+        register_user(&service).await;
+
+        let err = service
+            .login(
+                "email",
+                "john@example.com",
+                "wrong_password",
+                TEST_JKT,
+                test_ip(),
+                None,
+            )
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ServiceError::Unauthorized));
+    }
+
+    #[sqlx::test]
+    async fn login_unknown_identifier_returns_unauthorized(pool: PgPool) {
+        let service = service(&pool);
+
+        let err = service
+            .login(
+                "email",
+                "nobody@example.com",
+                TEST_PASSWORD,
+                TEST_JKT,
+                test_ip(),
+                None,
+            )
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ServiceError::Unauthorized));
+    }
+
+    #[sqlx::test]
+    async fn login_is_case_insensitive(pool: PgPool) {
+        let service = service(&pool);
+        register_user(&service).await;
+
+        let outcome = service
+            .login(
+                "email",
+                "JOHN@EXAMPLE.COM",
+                TEST_PASSWORD,
+                TEST_JKT,
+                test_ip(),
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, LoginOutcome::Success { .. }));
+    }
+
+    #[sqlx::test]
+    async fn login_requires_2fa_when_totp_enabled(pool: PgPool) {
+        let service = service(&pool);
+        register_user(&service).await;
+
+        let mut conn = pool.acquire().await.unwrap();
+
+        let user = repo::find_user_by_identifier(&mut conn, "email", "john@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+
+        sqlx::query!(
+            r#"
+         	UPDATE dpop_users SET totp_enabled = TRUE
+          	WHERE id = $1
+         	"#,
+            user.id
+        )
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+
+        let outcome = service
+            .login(
+                "email",
+                "john@example.com",
+                TEST_PASSWORD,
+                TEST_JKT,
+                test_ip(),
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, LoginOutcome::Requires2fa));
+    }
+
+    // refresh
+
+    #[sqlx::test]
+    async fn refresh_rotates_token(pool: PgPool) {
+        let service = service(&pool);
+        let old = register_user(&service).await;
+
+        let new = service
+            .refresh(&old.refresh_token, TEST_JKT, None)
+            .await
+            .unwrap();
+
+        assert_ne!(new.refresh_token, old.refresh_token);
+
+        // old is revoked, new is active
+        let mut conn = pool.acquire().await.unwrap();
+
+        let old_row =
+            repo::find_refresh_token_by_hash(&mut conn, &hash_token(old.refresh_token.as_bytes()))
+                .await
+                .unwrap()
+                .unwrap();
+        assert!(old_row.revoked_at.is_some());
+
+        let new_row =
+            repo::find_refresh_token_by_hash(&mut conn, &hash_token(new.refresh_token.as_bytes()))
+                .await
+                .unwrap()
+                .unwrap();
+        assert!(new_row.revoked_at.is_none());
+        assert_eq!(new_row.fam, old_row.fam);
+    }
+
+    #[sqlx::test]
+    async fn refresh_reuse_revokes_family(pool: PgPool) {
+        // grace = 1ms so the grace entry expires quickly and we hit reuse.
+        let service = build_service(
+            &pool,
+            Duration::from_millis(1),
+            Duration::from_secs(38 * 24 * 60 * 60),
+            true,
+        );
+        let old = register_user(&service).await;
+
+        let new = service
+            .refresh(&old.refresh_token, TEST_JKT, None)
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        let err = service
+            .refresh(&old.refresh_token, TEST_JKT, None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ServiceError::Unauthorized));
+
+        // the whole family is revoked, including the replacement
+        let mut conn = pool.acquire().await.unwrap();
+        let new_row =
+            repo::find_refresh_token_by_hash(&mut conn, &hash_token(new.refresh_token.as_bytes()))
+                .await
+                .unwrap()
+                .unwrap();
+        assert!(new_row.revoked_at.is_some());
+    }
+
+    #[sqlx::test]
+    async fn refresh_grace_returns_same_replacement(pool: PgPool) {
+        let service = service(&pool);
+        let old = register_user(&service).await;
+
+        let first = service
+            .refresh(&old.refresh_token, TEST_JKT, None)
+            .await
+            .unwrap();
+
+        // immediate reuse within the 5s grace window -> same replacement, no reuse
+        let second = service
+            .refresh(&old.refresh_token, TEST_JKT, None)
+            .await
+            .unwrap();
+
+        assert_eq!(second.refresh_token, first.refresh_token);
+    }
+
+    #[sqlx::test]
+    async fn refresh_inherits_lifetime(pool: PgPool) {
+        let service = build_service(&pool, Duration::from_secs(5), Duration::from_secs(60), true);
+        let old = register_user(&service).await;
+
+        let old_expires = refresh_expiry(&pool, &old.refresh_token).await;
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let new = service
+            .refresh(&old.refresh_token, TEST_JKT, None)
+            .await
+            .unwrap();
+
+        let new_expires = refresh_expiry(&pool, &new.refresh_token).await;
+
+        // lifetime is inherited, not reset (RFC 9700 section 4.14)
+        assert_eq!(new_expires, old_expires);
+    }
+
+    #[sqlx::test]
+    async fn refresh_dpop_key_mismatch_rejected(pool: PgPool) {
+        let service = service(&pool);
+        let old = register_user(&service).await;
+
+        let err = service
+            .refresh(&old.refresh_token, "some-other-jkt", None)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ServiceError::Unauthorized));
+    }
+
+    #[sqlx::test]
+    async fn refresh_unknown_token_rejected(pool: PgPool) {
+        let service = service(&pool);
+
+        let err = service
+            .refresh("not-a-real-refersh-token", TEST_JKT, None)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ServiceError::Unauthorized));
+    }
+
+    // logout
+
+    #[sqlx::test]
+    async fn logout_revokes_token(pool: PgPool) {
+        let service = service(&pool);
+        let tokens = register_user(&service).await;
+
+        service.logout(&tokens.refresh_token).await.unwrap();
+
+        let err = service
+            .refresh(&tokens.refresh_token, TEST_JKT, None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ServiceError::Unauthorized));
+    }
+}
