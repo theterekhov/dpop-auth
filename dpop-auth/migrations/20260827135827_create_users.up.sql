@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS dpop_users (
 	totp_secret VARCHAR(64),
 	totp_enabled BOOLEAN NOT NULL DEFAULT FALSE,
 	totp_enabled_at TIMESTAMPTZ,
+	totp_pending_secret TEXT,
+	totp_pending_at TIMESTAMPTZ,
 	last_login_at TIMESTAMPTZ,
 	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 	updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
