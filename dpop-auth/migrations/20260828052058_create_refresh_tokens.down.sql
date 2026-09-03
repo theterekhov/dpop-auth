@@ -1,3 +1,3 @@
 -- Add down migration script here
 -- TABLE
-DROP TABLE IF EXISTS dpop_refresh_tokens;
+DROP TABLE dpop_refresh_tokens;
