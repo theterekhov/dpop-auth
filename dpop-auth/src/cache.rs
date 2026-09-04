@@ -65,3 +65,18 @@ pub fn create_totp_replay_cache() -> TotpReplayCache {
         .max_capacity(CACHE_CAPACITY)
         .build()
 }
+
+#[cfg(all(test, feature = "totp"))]
+mod totp_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn totp_replay_cache_prevents_replay() {
+        let cache = create_totp_replay_cache();
+        let key = (Uuid::new_v4(), "123456".to_string());
+
+        assert!(!cache.contains_key(&key));
+        cache.insert(key.clone(), ()).await;
+        assert!(cache.contains_key(&key));
+    }
+}

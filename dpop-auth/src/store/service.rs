@@ -1332,3 +1332,303 @@ mod tests {
         assert!(matches!(err, ServiceError::Unauthorized));
     }
 }
+
+#[cfg(all(test, feature = "totp"))]
+mod totp_tests {
+    use std::net::Ipv4Addr;
+
+    use sqlx::PgPool;
+    use totp_rs::{Algorithm, Builder, Secret};
+
+    use crate::{TokenSigner, store::totp::count_active_recovery_codes};
+
+    use super::*;
+
+    const JKT: &str = "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I";
+    const PASSWORD: &str = "correct horse battery staple";
+
+    fn test_ip() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7))
+    }
+
+    fn service(pool: &PgPool) -> AuthService {
+        let singer = TokenSigner::symmetric(b"test-secret-key");
+        let config = DpopConfig::builder()
+            .public_url("https://example.com")
+            .signer(singer)
+            .build()
+            .unwrap();
+
+        AuthService::new(pool.clone(), config)
+    }
+
+    async fn register(pool: &PgPool) -> UserRow {
+        let service = service(pool);
+        service
+            .register(RegisterParams {
+                kind: "email",
+                value: "john@example.com",
+                password: PASSWORD,
+                name: "John",
+                jkt: JKT,
+                client_ip: test_ip(),
+                user_agent: None,
+            })
+            .await
+            .unwrap();
+
+        let mut conn = pool.acquire().await.unwrap();
+        repo::find_user_by_identifier(&mut conn, "email", "john@example.com")
+            .await
+            .unwrap()
+            .unwrap()
+    }
+
+    fn current_code(secret_base32: &str) -> String {
+        let secret = Secret::try_from_base32(secret_base32).unwrap();
+
+        Builder::new()
+            .with_algorithm(Algorithm::SHA1)
+            .with_secret(secret)
+            .build()
+            .unwrap()
+            .generate_current()
+            .to_string()
+    }
+
+    // Run setup + confirm for a user and return the freshly-issued recovery codes.
+    async fn enroll(pool: &PgPool, user_id: Uuid) -> Vec<String> {
+        let service = service(pool);
+        let setup = service
+            .setup_2fa(user_id, "Example", "john@example.com")
+            .await
+            .unwrap();
+        let code = current_code(&setup.secret_base32);
+
+        service.confirm_2fa(user_id, &code).await.unwrap()
+    }
+
+    #[sqlx::test]
+    async fn setup_confirms_then_activates_2fa(pool: PgPool) {
+        let user = register(&pool).await;
+        let service = service(&pool);
+
+        // Phase 1: setup writes ONLY a pending draft, not the active secret.
+        let setup = service
+            .setup_2fa(user.id, "Example", "john@example.com")
+            .await
+            .unwrap();
+        assert!(!setup.secret_base32.is_empty());
+
+        let mut conn = pool.acquire().await.unwrap();
+
+        let before = repo::find_user_by_id(&mut conn, user.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!before.totp_enabled);
+        assert!(
+            before.totp_secret.is_none(),
+            "active secret untouched by setup"
+        );
+
+        // Phase 2+3: confirm verifies the draft + TTL, then activates atomically.
+        let code = current_code(&setup.secret_base32);
+        let recovery_codes = service.confirm_2fa(user.id, &code).await.unwrap();
+
+        assert_eq!(recovery_codes.len(), 10);
+        assert!(recovery_codes.iter().all(|c| is_recovery_code(c)));
+
+        let enabled = repo::find_user_by_id(&mut conn, user.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(enabled.totp_enabled);
+        assert!(enabled.totp_enabled_at.is_some());
+        assert_eq!(
+            enabled.totp_secret.as_deref(),
+            Some(&setup.secret_base32[..])
+        );
+        assert!(
+            enabled.totp_pending_secret.is_none(),
+            "pending secret cleared after activation"
+        );
+    }
+
+    #[sqlx::test]
+    async fn confirm_2fa_rejects_wrong_code(pool: PgPool) {
+        let user = register(&pool).await;
+        let service = service(&pool);
+
+        service
+            .setup_2fa(user.id, "Example", "john@example.com")
+            .await
+            .unwrap();
+        assert!(matches!(
+            service.confirm_2fa(user.id, "000000").await,
+            Err(ServiceError::Unauthorized)
+        ));
+
+        let mut conn = pool.acquire().await.unwrap();
+
+        let after = repo::find_user_by_id(&mut conn, user.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!after.totp_enabled, "wrong code must not activate 2FA");
+        assert!(after.totp_secret.is_none());
+    }
+
+    #[sqlx::test]
+    async fn expired_draft_is_rejected(pool: PgPool) {
+        let user = register(&pool).await;
+        let service = service(&pool);
+
+        let setup = service
+            .setup_2fa(user.id, "Example", "john@example.com")
+            .await
+            .unwrap();
+
+        // Age the draft past the 10-minutes TTL directly in the DB.
+        // Use an owner connection and drop it BEFORE calling confirm_2fa
+        // (which acquires its own connection) - this avoids holding a pool slot
+        // and any risk of pool exhaustion with a small `#[sqlx::test]` pool.
+        {
+            let mut conn = pool.acquire().await.unwrap();
+
+            sqlx::query!(
+                r#"
+         	UPDATE dpop_users
+          	SET totp_pending_at = now() - INTERVAL '11 minutes'
+           	WHERE id = $1
+         	"#,
+                user.id
+            )
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        } // conn dropped here
+
+        let code = current_code(&setup.secret_base32);
+        assert!(matches!(
+            service.confirm_2fa(user.id, &code).await,
+            Err(ServiceError::Conflict(_))
+        ));
+
+        let mut conn = pool.acquire().await.unwrap();
+
+        let after = repo::find_user_by_id(&mut conn, user.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!after.totp_enabled, "expired draft must not activate");
+        assert!(after.totp_secret.is_none());
+        assert!(after.totp_pending_secret.is_some());
+        assert!(after.totp_pending_at.is_some());
+    }
+
+    #[sqlx::test]
+    async fn setup_2fa_returns_same_live_draft(pool: PgPool) {
+        let user = register(&pool).await;
+        let service = service(&pool);
+
+        let first = service
+            .setup_2fa(user.id, "Example", "john@example.com")
+            .await
+            .unwrap();
+        let second = service
+            .setup_2fa(user.id, "Example", "john@example.com")
+            .await
+            .unwrap();
+
+        // A live draft (younger than TTL) is *resumed*, not replaced and not
+        // blocked: the Same secret comes back, so a refreshed tab (F5) recovers
+        // the QR the phone already scanned instead of failing with `Conflict.`
+        assert_eq!(second.secret_base32, first.secret_base32);
+
+        // The re-shown QR / draft is still valid for confirmation.
+        let code = current_code(&second.secret_base32);
+        let recovery_codes = service.confirm_2fa(user.id, &code).await.unwrap();
+        assert_eq!(recovery_codes.len(), 10);
+    }
+
+    #[sqlx::test]
+    async fn verify_2fa_code_rejects_replay(pool: PgPool) {
+        let user = register(&pool).await;
+        let service = service(&pool);
+
+        let recovery_codes = enroll(&pool, user.id).await;
+        assert_eq!(recovery_codes.len(), 10);
+
+        // The step-up code must be generated from the ACTIVE secret,
+        // not a fresh draft: `setup_2fa` on an enrolled user writes nothing.
+        let mut conn = pool.acquire().await.unwrap();
+
+        let active_secret = repo::find_user_by_id(&mut conn, user.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .totp_secret
+            .clone()
+            .unwrap();
+
+        drop(conn);
+
+        let step_up = current_code(&active_secret);
+        assert_eq!(
+            service.verify_2fa_code(user.id, &step_up).await.unwrap(),
+            SecondFactorKind::Totp
+        );
+        assert!(matches!(
+            service.verify_2fa_code(user.id, &step_up).await,
+            Err(ServiceError::Unauthorized)
+        ));
+    }
+
+    #[sqlx::test]
+    async fn recovery_code_is_single_use(pool: PgPool) {
+        let user = register(&pool).await;
+        let service = service(&pool);
+
+        let recovery_codes = enroll(&pool, user.id).await;
+        assert_eq!(recovery_codes.len(), 10);
+
+        let used = service
+            .verify_2fa_code(user.id, &recovery_codes[0])
+            .await
+            .unwrap();
+        assert_eq!(used, SecondFactorKind::RecoveryCode);
+
+        let again = service.verify_2fa_code(user.id, &recovery_codes[0]).await;
+        assert!(matches!(again, Err(ServiceError::Unauthorized)));
+    }
+
+    #[sqlx::test]
+    async fn disable_2fa_clears_state(pool: PgPool) {
+        let user = register(&pool).await;
+        let service = service(&pool);
+
+        let recovery_codes = enroll(&pool, user.id).await;
+
+        service
+            .disable_2fa(user.id, &recovery_codes[0])
+            .await
+            .unwrap();
+
+        let mut conn = pool.acquire().await.unwrap();
+
+        let updated_user = repo::find_user_by_id(&mut conn, user.id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(!updated_user.totp_enabled);
+        assert!(updated_user.totp_secret.is_none());
+        assert!(updated_user.totp_pending_secret.is_none());
+
+        let active_recovery_codes = count_active_recovery_codes(&mut conn, user.id)
+            .await
+            .unwrap();
+        assert_eq!(active_recovery_codes, 0);
+    }
+}

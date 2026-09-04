@@ -133,8 +133,8 @@ pub fn generate_recovery_code() -> Result<String, DpopError> {
         "{}-{}-{}-{}",
         &hex[0..5],
         &hex[5..10],
-        &hex[11..15],
-        &hex[16..20]
+        &hex[10..15],
+        &hex[15..20]
     ))
 }
 
@@ -197,4 +197,117 @@ pub fn is_recovery_code(code: &str) -> bool {
     let mut groups = code.split('-');
     groups.clone().count() == 4
         && groups.all(|g| g.len() == 5 && g.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    fn code_at(secret_base32: &str, time: u64) -> String {
+        build_totp(secret_base32, None, None)
+            .unwrap()
+            .generate(time)
+            .to_string()
+    }
+
+    #[test]
+    fn generate_setup_returns_secret_and_url() {
+        let setup = generate_setup("Example", "john@example.com").unwrap();
+
+        assert!(setup.secret_base32.len() >= 32, "base32 secret");
+        assert!(setup.otpauth_url.starts_with("otpauth://totp/"));
+        assert!(setup.otpauth_url.contains("Example"));
+        assert!(setup.otpauth_url.contains("john%40example.com"));
+    }
+
+    #[test]
+    fn setup_from_secret_roundtrips() {
+        let first_setup = generate_setup("Example", "john@example.com").unwrap();
+        let resumed =
+            setup_from_secret(&first_setup.secret_base32, "Example", "john@example.com").unwrap();
+
+        // Rebuilding from a know base32 must be deterministic: same secret and
+        // same otpauth URL - this is what lets `setup_2fa` re-show the SAME QR
+        // after an F5 without orphaning the already-scanned phone.
+        assert_eq!(resumed.secret_base32, first_setup.secret_base32);
+        assert_eq!(resumed.otpauth_url, first_setup.otpauth_url);
+    }
+
+    #[test]
+    fn verify_code_accepts_current() {
+        let setup = generate_setup("Example", "john@example.com").unwrap();
+
+        let code = build_totp(&setup.secret_base32, None, None)
+            .unwrap()
+            .generate_current()
+            .to_string();
+
+        assert!(verify_code(&setup.secret_base32, &code));
+    }
+
+    #[test]
+    fn verify_code_rejects_wrong() {
+        let setup = generate_setup("Example", "john@example.com").unwrap();
+
+        assert!(!verify_code(&setup.secret_base32, "000000"));
+    }
+
+    #[test]
+    fn verify_code_is_deterministic() {
+        let setup = generate_setup("Example", "john@example.com").unwrap();
+        let now = 1_700_000_000;
+
+        let code = code_at(&setup.secret_base32, now);
+        assert!(
+            build_totp(&setup.secret_base32, None, None)
+                .unwrap()
+                .check(&code, now)
+                .is_some()
+        );
+
+        // a code from another window is rejected `now`
+        let other = code_at(&setup.secret_base32, now - 120);
+        assert!(
+            build_totp(&setup.secret_base32, None, None)
+                .unwrap()
+                .check(&other, now)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn generate_recovery_code_format() {
+        let code = generate_recovery_code().unwrap();
+
+        assert_eq!(code.len(), 23, "XXXXX-XXXXX-XXXXX-XXXXX");
+        assert!(is_recovery_code(&code));
+
+        code.chars().enumerate().for_each(|(i, c)| {
+            if i % 6 == 5 {
+                assert_eq!(c, '-');
+            } else {
+                assert!(c.is_ascii_hexdigit());
+            }
+        });
+    }
+
+    #[test]
+    fn hash_recovery_code_normalizes() {
+        let a = hash_recovery_code("ABCDE-12345-ABCDE-12345");
+        let b = hash_recovery_code("abcde-12345-abcde-12345");
+        let c = hash_recovery_code("     abcde-12345-abcde-12345    ");
+
+        assert_eq!(a.len(), 64);
+        assert_eq!(a, b, "case-insensitive");
+        assert_eq!(a, c, "trimmed");
+    }
+
+    #[test]
+    fn is_recovery_code_detects_format() {
+        assert!(is_recovery_code("ABCDE-12345-ABCDE-12345"));
+        assert!(!is_recovery_code("123456"));
+        assert!(!is_recovery_code("12345678"));
+        assert!(!is_recovery_code("ABCDE-1234-ABCDE-12345"));
+    }
 }
