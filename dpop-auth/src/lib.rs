@@ -22,6 +22,8 @@ pub mod token;
 pub mod cookie;
 #[cfg(feature = "postgres")]
 pub mod store;
+#[cfg(feature = "totp")]
+pub mod totp;
 
 pub use config::{DpopConfig, TokenSigner};
 pub use error::DpopError;
@@ -34,3 +36,6 @@ pub use state::DpopState;
 pub use store::TenantTx;
 #[cfg(feature = "postgres")]
 pub use store::{AuthService, LoginOutcome, ServiceError, TokenPair};
+
+#[cfg(feature = "totp")]
+pub use totp::TotpSetup;
