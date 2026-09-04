@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE dpop_recovery_codes\n        SET used_at = now()\n        WHERE user_id = $1\n        \tAND code_hash = $2\n         \tAND used_at IS NULL\n        RETURNING id\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dpop_recovery_codes",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8cc932bd4f83e6d2115366ae3759af55067362b6a5a5141becbf454924b7cffc"
+}

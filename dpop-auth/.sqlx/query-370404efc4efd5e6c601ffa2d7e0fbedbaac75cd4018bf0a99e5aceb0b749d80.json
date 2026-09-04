@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tSELECT COUNT(*) as \"count!\"\n\t\tFROM dpop_recovery_codes\n\t\tWHERE id = $1\n\t\t\tAND used_at IS NULL\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "370404efc4efd5e6c601ffa2d7e0fbedbaac75cd4018bf0a99e5aceb0b749d80"
+}

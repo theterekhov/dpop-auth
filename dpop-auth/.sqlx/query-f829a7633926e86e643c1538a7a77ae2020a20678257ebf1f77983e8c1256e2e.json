@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n\t\tSELECT\n\t\t\tid,\n\t\t\tpublic_id,\n\t\t\tpassword_hash,\n\t\t\tname,\n\t\t\tpassword_changed_at,\n\t\t\ttotp_secret,\n\t\t\ttotp_enabled,\n\t\t\ttotp_enabled_at,\n\t\t\tlast_login_at,\n\t\t\tcreated_at,\n\t\t\tupdated_at,\n\t\t\tdeleted_at\n\t\tFROM dpop_users\n\t\tWHERE id = $1 AND deleted_at IS NULL\n\t\t",
+  "query": "\n\t\tINSERT INTO dpop_users (\n\t\t\tpassword_hash,\n\t\t\tname,\n\t\t\tpassword_changed_at\n\t\t) VALUES ($1, $2, $3)\n\t\tRETURNING\n\t\t\tid,\n\t\t\tpublic_id,\n\t\t\tpassword_hash,\n\t\t\tname,\n\t\t\tpassword_changed_at,\n\t\t\ttotp_secret,\n\t\t\ttotp_enabled,\n\t\t\ttotp_enabled_at,\n\t\t\ttotp_pending_secret,\n\t\t\ttotp_pending_at,\n\t\t\tlast_login_at,\n\t\t\tcreated_at,\n\t\t\tupdated_at,\n\t\t\tdeleted_at\n\t\t",
   "describe": {
     "columns": [
       {
@@ -93,6 +93,28 @@
       },
       {
         "ordinal": 8,
+        "name": "totp_pending_secret",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "totp_pending_secret"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "totp_pending_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "totp_pending_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
         "name": "last_login_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -103,7 +125,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 11,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -114,7 +136,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 12,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -125,7 +147,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 13,
         "name": "deleted_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -138,7 +160,9 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Text",
+        "Text",
+        "Timestamptz"
       ]
     },
     "nullable": [
@@ -151,10 +175,12 @@
       false,
       true,
       true,
+      true,
+      true,
       false,
       false,
       true
     ]
   },
-  "hash": "160a070ac0abf979bd36b0d6321acad03c2ed0be4e6001c2aba9740c0e917cd6"
+  "hash": "f829a7633926e86e643c1538a7a77ae2020a20678257ebf1f77983e8c1256e2e"
 }

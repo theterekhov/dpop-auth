@@ -7,6 +7,9 @@ pub mod repo;
 pub mod service;
 pub mod tenant;
 
+#[cfg(feature = "totp")]
+pub mod totp;
+
 mod password;
 
 pub use error::ServiceError;

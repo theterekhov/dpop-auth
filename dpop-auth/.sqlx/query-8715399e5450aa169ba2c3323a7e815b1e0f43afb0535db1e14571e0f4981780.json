@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tUPDATE dpop_users\n\t\tSET totp_pending_secret = $2,\n\t\t\ttotp_pending_at = now()\n\t\tWHERE id = $1\n\t\t\tAND totp_enabled = FALSE\n\t\t\tAND deleted_at IS NULL\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8715399e5450aa169ba2c3323a7e815b1e0f43afb0535db1e14571e0f4981780"
+}

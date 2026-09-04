@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n     \tSELECT totp_pending_secret\n      \tFROM dpop_users\n       \tWHERE id = $1\n        \tAND totp_enabled = FALSE\n         \tAND totp_pending_at > now() - INTERVAL '10 minutes'\n          \tAND deleted_at IS NULL\n     \t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "totp_pending_secret",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "totp_pending_secret"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "09bc2ff2e6041b953c316967fa40c97193b52772bd5071ad75f38ddc15d70144"
+}
