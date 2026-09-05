@@ -5,7 +5,7 @@ members = ["dpop-auth"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.98.0"
+rust-version = "1.98.1"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/theterekhov/dpop-auth"
 
@@ -26,10 +26,12 @@ axum = { version = "0.8.9", features = ["macros"] }
 tower = "0.5.3"
 http = "1.5.0"
 sqlx = { version = "0.9.0", features = ["postgres", "runtime-tokio", "uuid", "chrono", "migrate", "ipnetwork"] }
+ipnetwork = "0.21.1"
 chrono = "0.4.45"
-tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "time"] }
 argon2 = {version = "0.6.0", features = ["password-hash"]}
 axum-extra = {version = "0.12.6", features = ["cookie"]}
 getrandom = "0.4.3"
 time = "0.3.55"
 totp-rs = { version = "6.0.0", features = ["otpauth", "gen_secret"] }
+lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls", "aws-lc-rs", "webpki-roots"] }
