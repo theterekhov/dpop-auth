@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tUPDATE dpop_email_outbox\n\t\tSET\n\t\t\tsent_at = now(),\n\t\t\tlocked_at = NULL\n\t\tWHERE id = $1\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6814cb7e9f388508578940f589e5487851c0efc34a0b2d942f451364f7e63fe0"
+}
