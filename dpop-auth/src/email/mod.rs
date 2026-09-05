@@ -242,3 +242,51 @@ impl EmailSender for StubEmailSender {
         Box::pin(std::future::ready(Ok(())))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config() -> SmtpConfig {
+        SmtpConfig {
+            host: "localhost".to_string(),
+            port: 2525,
+            username: Some("user".to_string()),
+            password: Some("secret".to_string()),
+            from_name: "Example".to_string(),
+            from_email: "noreply@example.com".to_string(),
+            starttls: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn log_sender_returns_ok() {
+        assert!(
+            LogEmailSender
+                .send("a@b.c", "Subject", "Body")
+                .await
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn smtp_config_debug_redacts_password() {
+        let debug = format!("{:?}", config());
+        assert!(!debug.contains("secret"));
+        assert!(debug.contains("REDACTED"));
+    }
+
+    #[test]
+    fn smtp_sender_from_config_without_auth() {
+        let mut config = config();
+        config.username = None;
+        config.password = None;
+        config.starttls = false;
+        assert!(SmtpEmailSender::from_config(&config).is_ok());
+    }
+
+    #[test]
+    fn smtp_sender_from_config_parses() {
+        assert!(SmtpEmailSender::from_config(&config()).is_ok());
+    }
+}

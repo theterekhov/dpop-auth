@@ -283,3 +283,191 @@ impl EmailOutboxWorker {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use sqlx::PgPool;
+
+    use crate::StubEmailSender;
+
+    use super::*;
+
+    struct FailingSender;
+
+    impl EmailSender for FailingSender {
+        fn send<'a>(
+            &'a self,
+            _to: &'a str,
+            _subject: &'a str,
+            _body: &'a str,
+        ) -> crate::email::BoxFuture<'a, Result<(), EmailError>> {
+            Box::pin(std::future::ready(Err(EmailError::Send(
+                "smtp down".into(),
+            ))))
+        }
+    }
+
+    #[derive(sqlx::FromRow)]
+    struct OutboxInspect {
+        attempts: i16,
+        available_at: DateTime<Utc>,
+        locked_at: Option<DateTime<Utc>>,
+        sent_at: Option<DateTime<Utc>>,
+        last_error: Option<String>,
+    }
+
+    async fn inspect(conn: &mut PgConnection) -> OutboxInspect {
+        sqlx::query_as(
+            r#"
+       		SELECT
+         		attempts,
+           		available_at,
+             	locked_at,
+              	sent_at,
+               	last_error
+            FROM dpop_email_outbox
+       		"#,
+        )
+        .fetch_one(conn)
+        .await
+        .unwrap()
+    }
+
+    #[sqlx::test]
+    async fn enqueue_email_persists_row(pool: PgPool) {
+        let stub = Arc::new(StubEmailSender::default());
+        let worker = EmailOutboxWorker::new(pool.clone(), stub.clone());
+
+        let mut conn = pool.acquire().await.unwrap();
+        enqueue_email(&mut conn, "john@example.com", "Hello", "Body")
+            .await
+            .unwrap();
+
+        drop(conn);
+
+        worker.process_batch().await.unwrap();
+
+        assert_eq!(stub.messages().len(), 1);
+        assert_eq!(stub.messages()[0].to, "john@example.com");
+
+        let mut conn = pool.acquire().await.unwrap();
+        let row = inspect(&mut conn).await;
+        assert!(row.sent_at.is_some());
+        assert!(row.locked_at.is_none());
+    }
+
+    #[sqlx::test]
+    async fn worker_failure_backs_off(pool: PgPool) {
+        let worker = EmailOutboxWorker::new(pool.clone(), Arc::new(FailingSender));
+
+        let mut conn = pool.acquire().await.unwrap();
+        enqueue_email(&mut conn, "a@b.c", "Subject", "Body")
+            .await
+            .unwrap();
+
+        drop(conn);
+
+        worker.process_batch().await.unwrap();
+
+        let mut conn = pool.acquire().await.unwrap();
+        let row = inspect(&mut conn).await;
+        assert_eq!(row.attempts, 1);
+        assert!(row.sent_at.is_none());
+        assert!(row.locked_at.is_none());
+        assert!(row.last_error.is_some());
+        assert!(row.available_at > Utc::now(), "next retry is in the future");
+    }
+
+    #[sqlx::test]
+    async fn worker_skips_not_available(pool: PgPool) {
+        let worker = EmailOutboxWorker::new(pool.clone(), Arc::new(FailingSender));
+
+        let mut conn = pool.acquire().await.unwrap();
+        enqueue_email(&mut conn, "a@b.c", "Subject", "Body")
+            .await
+            .unwrap();
+
+        drop(conn);
+
+        worker.process_batch().await.unwrap();
+        // The email is now backed off; a second pass must not touch it
+        worker.process_batch().await.unwrap();
+
+        let mut conn = pool.acquire().await.unwrap();
+        let row = inspect(&mut conn).await;
+        assert_eq!(row.attempts, 1, "backoff must prevent immediate re-claim");
+    }
+
+    #[sqlx::test]
+    async fn worker_respects_max_attempts(pool: PgPool) {
+        let worker = EmailOutboxWorker::new(pool.clone(), Arc::new(FailingSender));
+
+        let mut conn = pool.acquire().await.unwrap();
+        sqlx::query(
+            r#"
+         	INSERT INTO dpop_email_outbox (
+          		to_address,
+            	subject,
+             	body,
+              	max_attempts
+          	)
+           	VALUES ($1, $2, $3, $4)
+          	"#,
+        )
+        .bind("a@b.c")
+        .bind("Subject")
+        .bind("Body")
+        .bind(1_i16)
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+
+        drop(conn);
+
+        worker.process_batch().await.unwrap();
+
+        let mut conn = pool.acquire().await.unwrap();
+        let row = inspect(&mut conn).await;
+        assert_eq!(row.attempts, 1, "attempts reaches max_attempts");
+        assert!(row.sent_at.is_none());
+    }
+
+    #[sqlx::test]
+    async fn worker_reclaims_stale_lock(pool: PgPool) {
+        let stub = Arc::new(StubEmailSender::default());
+        let worker = EmailOutboxWorker::new(pool.clone(), stub.clone());
+
+        // Simulate a crashed worker: locked_at is 10 minutes ago, sent_at IS NULL
+        let mut conn = pool.acquire().await.unwrap();
+        sqlx::query(
+            r#"
+         	INSERT INTO dpop_email_outbox (
+          		to_address,
+            	subject,
+             	body,
+              	locked_at
+          	)
+           	VALUES ($1, $2, $3, now() - INTERVAL '10 minutes')
+         	"#,
+        )
+        .bind("crashed@example.com")
+        .bind("Orphaned Subject")
+        .bind("Orphaned Body")
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+
+        drop(conn);
+
+        // Current worker process should re-claim and send the abandoned email
+        worker.process_batch().await.unwrap();
+
+        assert_eq!(stub.messages().len(), 1);
+        assert_eq!(stub.messages()[0].to, "crashed@example.com");
+
+        let mut conn = pool.acquire().await.unwrap();
+        let row = inspect(&mut conn).await;
+        assert!(row.sent_at.is_some());
+        assert!(row.locked_at.is_none());
+    }
+}
