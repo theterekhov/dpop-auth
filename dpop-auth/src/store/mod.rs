@@ -7,8 +7,11 @@ pub mod repo;
 pub mod service;
 pub mod tenant;
 
-#[cfg(feature = "totp")]
+#[cfg(all(feature = "totp", feature = "postgres"))]
 pub mod totp;
+
+#[cfg(all(feature = "email", feature = "postgres"))]
+pub mod email;
 
 mod password;
 
