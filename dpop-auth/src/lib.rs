@@ -20,10 +20,15 @@ pub mod token;
 
 #[cfg(feature = "cookie")]
 pub mod cookie;
+
 #[cfg(feature = "postgres")]
 pub mod store;
+
 #[cfg(feature = "totp")]
 pub mod totp;
+
+#[cfg(feature = "email")]
+pub mod email;
 
 pub use config::{DpopConfig, TokenSigner};
 pub use error::DpopError;
@@ -34,8 +39,17 @@ pub use state::DpopState;
 
 #[cfg(feature = "postgres")]
 pub use store::TenantTx;
+
 #[cfg(feature = "postgres")]
 pub use store::{AuthService, LoginOutcome, ServiceError, TokenPair};
 
 #[cfg(feature = "totp")]
 pub use totp::TotpSetup;
+
+#[cfg(feature = "email")]
+pub use email::{
+    EmailError, EmailSender, LogEmailSender, SmtpConfig, SmtpEmailSender, StubEmailSender,
+};
+
+#[cfg(all(feature = "email", feature = "postgres"))]
+pub use store::email::EmailOutboxWorker;
