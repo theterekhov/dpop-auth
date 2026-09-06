@@ -3,7 +3,6 @@
 use std::time::Duration;
 
 use moka::future::Cache;
-use uuid::Uuid;
 
 /// Time-to-live of a `jti` entry.
 ///
@@ -39,7 +38,7 @@ pub type NonceCache = Cache<String, bool>;
 
 /// Cache of already-used TOTP codes: `(user_id, code) -> ()`.
 #[cfg(feature = "totp")]
-pub type TotpReplayCache = Cache<(Uuid, String), ()>;
+pub type TotpReplayCache = Cache<(uuid::Uuid, String), ()>;
 
 /// Create a [`JtiCache`] with a 60-second TTL.
 pub fn create_jti_cache() -> JtiCache {
@@ -73,7 +72,7 @@ mod totp_tests {
     #[tokio::test]
     async fn totp_replay_cache_prevents_replay() {
         let cache = create_totp_replay_cache();
-        let key = (Uuid::new_v4(), "123456".to_string());
+        let key = (uuid::Uuid::new_v4(), "123456".to_string());
 
         assert!(!cache.contains_key(&key));
         cache.insert(key.clone(), ()).await;

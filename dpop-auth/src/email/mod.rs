@@ -2,6 +2,7 @@
 
 use std::pin::Pin;
 
+use moka::future::FutureExt;
 use thiserror::Error;
 
 /// A boxed, `Send` future returned by [`EmailSender::send`].
@@ -239,7 +240,7 @@ impl EmailSender for StubEmailSender {
                 body: body.to_string(),
             });
 
-        Box::pin(std::future::ready(Ok(())))
+        std::future::ready(Ok(())).boxed()
     }
 }
 
