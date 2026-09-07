@@ -25,6 +25,5 @@ dotenvy = "0.15.7"
 jsonwebtoken.workspace = true
 p256 = { version = "0.14.0", features = ["ecdsa", "pkcs8"] }
 uuid.workspace = true
-getrandom.workspace = true
 base64ct.workspace = true
 tower = {workspace = true, features = ["util"]}

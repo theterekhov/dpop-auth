@@ -2523,7 +2523,6 @@ dependencies = [
  "base64ct",
  "dotenvy",
  "dpop-auth",
- "getrandom 0.4.3",
  "jsonwebtoken",
  "p256",
  "serde",

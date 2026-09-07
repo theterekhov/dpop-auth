@@ -98,3 +98,86 @@ pub async fn generate_proof(
 
     Ok(format!("{signing_input}.{signature_b64}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compute_ath_matches_library() {
+        assert_eq!(
+            compute_ath("abc"),
+            "ungWv48Bz-pBQUDeXa4iI7ADYaOWF3qctBD_YfIAFa0"
+        );
+    }
+
+    #[test]
+    fn build_proof_has_correct_shape() {
+        let jwk = serde_json::json!({
+            "kty": "EC",
+             "crv": "P-256",
+              "x": "x",
+               "y": "y"
+        });
+        let input = build_proof_signing_input(
+            &jwk,
+            "POST",
+            "https://example.com/login",
+            1_700_000_000,
+            "jti-1",
+            None,
+            None,
+        );
+
+        assert_eq!(input.split('.').count(), 2, "header.payload");
+        assert!(!input.contains('='), "base61url not padding");
+        assert!(
+            !input.contains('+') && !input.contains('/'),
+            "base64url alphabet"
+        );
+    }
+
+    #[test]
+    fn build_proof_adds_ath_for_resource() {
+        let jwk = serde_json::json!({"kty":"EC"});
+        let token = "token-value";
+        let input = build_proof_signing_input(
+            &jwk,
+            "GET",
+            "https://example.com",
+            1_700_000_000,
+            "jti-1",
+            Some(token),
+            None,
+        );
+
+        let claims_part = input.split('.').nth(1).unwrap();
+        let decoded =
+            String::from_utf8(Base64UrlUnpadded::decode_vec(claims_part).unwrap()).unwrap();
+        let claims = serde_json::from_str::<serde_json::Value>(&decoded).unwrap();
+        assert_eq!(claims["ath"], serde_json::json!(compute_ath(token)));
+        assert!(claims.get("nonce").is_none());
+    }
+
+    #[test]
+    fn build_proof_adds_nonce_when_present() {
+        let jwk = serde_json::json!({"kty":"EC"});
+        let input = build_proof_signing_input(
+            &jwk,
+            "GET",
+            "https://example.com/me",
+            1_700_000_000,
+            "jti-1",
+            None,
+            Some("nonce-1"),
+        );
+
+        let claims_part = input.split('.').nth(1).unwrap();
+        let decoded =
+            String::from_utf8(Base64UrlUnpadded::decode_vec(claims_part).unwrap()).unwrap();
+        let claims = serde_json::from_str::<serde_json::Value>(&decoded).unwrap();
+
+        assert_eq!(claims["nonce"], serde_json::json!("nonce-1"));
+        assert!(claims.get("ath").is_none());
+    }
+}
