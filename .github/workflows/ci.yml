@@ -60,7 +60,9 @@ jobs:
         run: cargo test --workspace --exclude web --all-features -- --test-threads=1
 
       - name: Check docs (rustdoc gate)
-        run: cargo doc -p dpop-auth --all-features --no-deps -D warnings
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc -p dpop-auth --all-features --no-deps
 
       - name: Check sqlx cache is fresh
         working-directory: dpop-auth
