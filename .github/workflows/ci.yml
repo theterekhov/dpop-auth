@@ -57,7 +57,7 @@ jobs:
       - name: Run test suite (excluding web/WASM)
         env:
           SQLX_OFFLINE: "false"
-        run: cargo test --workspace --exclude web --all-features
+        run: cargo test --workspace --exclude web --all-features -- --test-threads=1
 
       - name: Check docs (rustdoc gate)
         run: cargo doc -p dpop-auth --all-features --no-deps -D warnings
