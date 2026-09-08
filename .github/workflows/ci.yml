@@ -55,6 +55,8 @@ jobs:
         run: cargo clippy --all-features -- -D warnings
 
       - name: Run test suite (excluding web/WASM)
+        env:
+          SQLX_OFFLINE: "false"
         run: cargo test --workspace --exclude web --all-features
 
       - name: Check docs (rustdoc gate)
@@ -62,4 +64,6 @@ jobs:
 
       - name: Check sqlx cache is fresh
         working-directory: dpop-auth
+        env:
+          SQLX_OFFLINE: "false"
         run: cargo sqlx prepare --check
