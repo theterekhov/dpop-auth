@@ -2,7 +2,7 @@
 
 use totp_rs::{Algorithm, Builder, Secret, Totp};
 
-use crate::{DpopError, crypto::hash_token};
+use crate::{DpopError, crypto::dpop::hash_token};
 
 /// Number of digits in generated TOTP verification codes.
 const TOTP_DIGITS: u8 = 6;
@@ -147,7 +147,7 @@ pub fn generate_recovery_code() -> Result<String, DpopError> {
 ///
 /// # Errors
 ///
-/// Returns [`DpopError::Internal`] in the operating system entropy source fails.
+/// Returns [`DpopError::Internal`] if the operating system entropy source fails.
 pub fn generate_recovery_codes(count: usize) -> Result<Vec<String>, DpopError> {
     let mut bytes = vec![0_u8; count * 10];
     getrandom::fill(&mut bytes).map_err(|e| DpopError::Internal(e.to_string()))?;

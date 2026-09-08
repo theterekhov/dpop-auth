@@ -8,13 +8,14 @@ license.workspace = true
 keywords = ["dpop", "auth", "axum", "oauth", "jwt"]
 categories = ["authentication", "web-programming::http-server"]
 repository.workspace = true
-readme = "README.md"
+readme = "../README.md"
 include = [
-	"src/**/*",
-	"migrations/**/*",
-	".sqlx/**/*",
+	"src/**",
+	"migrations/**",
+	".sqlx/**",
 	"Cargo.toml",
-	"README.md"
+	"LICENSE-MIT",
+	"LICENSE-APACHE"
 ]
 
 [package.metadata.docs.rs]
@@ -24,8 +25,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 default = []
 cookie = ["dep:axum-extra", "dep:time"]
-postgres = ["dep:sqlx", "dep:chrono", "dep:argon2", "dep:getrandom", "dep:ipnetwork"]
-totp = ["dep:totp-rs", "dep:getrandom"]
+postgres = ["dep:sqlx", "dep:chrono", "dep:argon2", "dep:ipnetwork"]
+totp = ["dep:totp-rs"]
 email = ["dep:lettre"]
 
 [dependencies]
@@ -51,7 +52,7 @@ ipnetwork = {workspace = true, optional = true}
 chrono = { workspace = true, optional = true}
 axum-extra = {workspace = true, optional = true}
 argon2 = {workspace = true, optional = true}
-getrandom = {workspace = true, optional = true}
+getrandom.workspace = true
 time = {workspace = true, optional = true}
 totp-rs = {workspace = true, optional = true}
 lettre = {workspace = true, optional = true}

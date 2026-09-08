@@ -132,7 +132,7 @@ mod tests {
     const CLOCK_SKEW: Duration = Duration::from_secs(60);
 
     fn symmetric() -> TokenSigner {
-        TokenSigner::symmetric(b"test-secret")
+        TokenSigner::symmetric(b"test-secret-key-must-be-at-least-32-bytes").unwrap()
     }
 
     fn asymmetric() -> TokenSigner {

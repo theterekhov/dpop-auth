@@ -16,7 +16,7 @@ use dpop_auth::{
     AuthService, DpopConfig, DpopError, DpopLayer, DpopSession, DpopState, LoginOutcome,
     ServiceError,
     dpop::{ValidationContext, validate_dpop_proof},
-    store::service::RegisterParams,
+    service::RegisterParams,
 };
 use serde::{Deserialize, Serialize};
 use tower_http::cors::{Any, CorsLayer};

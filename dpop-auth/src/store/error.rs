@@ -4,6 +4,8 @@ use axum::{Json, response::IntoResponse};
 use http::StatusCode;
 use thiserror::Error;
 
+use crate::error::DpopError;
+
 /// Errors raised by the PostgreSQL auth service.
 ///
 /// The `Unauthorized` variant carries no detail: from the outside,
@@ -35,6 +37,12 @@ pub enum ServiceError {
 
 impl From<sqlx::Error> for ServiceError {
     fn from(value: sqlx::Error) -> Self {
+        ServiceError::Internal(value.to_string())
+    }
+}
+
+impl From<DpopError> for ServiceError {
+    fn from(value: DpopError) -> Self {
         ServiceError::Internal(value.to_string())
     }
 }

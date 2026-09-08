@@ -6,7 +6,7 @@ use uuid::Uuid;
 /// Store a pending (draft) TOTP secret for a user.
 ///
 /// Written only while 2FA is not yet enabled. The draft is kept separate from
-/// the active `totp_secret` until the first code virifies (`active_totp`),
+/// the active `totp_secret` until the first code verifies (`active_totp`),
 /// so an abandoned setup never overwrites a live secret.
 ///
 /// # Errors
@@ -38,9 +38,9 @@ pub async fn set_pending_totp_secret(
 /// than the TTL.
 ///
 /// Returns `None` if there is no draft or it has expired;
-/// tha caller must start a fresh `setup_2fa` in that case. The TTL check
+/// the caller must start a fresh `setup_2fa` in that case. The TTL check
 /// lives here (the draft column keeps its `totp_pending_at` timestamp,
-/// so the QR code cannot be confirmed once th window has passed -
+/// so the QR code cannot be confirmed once the window has passed -
 /// an abandoned tab "turns into a pumpkin").
 ///
 /// # Errors
@@ -237,4 +237,34 @@ pub async fn count_active_recovery_codes(
     )
     .fetch_one(conn)
     .await
+}
+
+/// Delete expired pending TOTP drafts to prevent database bloat.
+///
+/// When users start the 2FA enrollment process but abandon it, their unconfirmed
+/// secrets remain in the `totp_pending_secret` column. This function clears
+/// drafts that have exceeded the 10-minute validity window.
+///
+/// # Usage
+///
+/// This is a maintenance query. It should not be called on the hot path
+/// (e.g., during login). Instead, the consuming application should run this
+/// periodically via a background worker, a scheduled cron task, or a Tokio interval.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] if the database query fails.
+pub async fn cleanup_expired_drafts(conn: &mut PgConnection) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+		UPDATE dpop_users
+		SET
+			totp_pending_secret = NULL,
+			totp_pending_at = NULL
+		WHERE totp_pending_at < now() - INTERVAL '10 minutes'
+		"#
+    )
+    .execute(conn)
+    .await
+    .map(|_| ())
 }

@@ -23,12 +23,22 @@ pub enum TokenSigner {
 }
 
 impl TokenSigner {
-    /// Crate a symmetric (HS256) signer from a shared secret.
-    pub fn symmetric(secret: &[u8]) -> Self {
-        Self::Symmetric(
+    /// Create a symmetric (HS256) signer from a shared secret
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DpopError::Internal`] if the secret is less than 32 bytes (256 bits).
+    pub fn symmetric(secret: &[u8]) -> Result<Self, DpopError> {
+        if secret.len() < 32 {
+            return Err(DpopError::Internal(
+                "HS256 requires at least a 32-byte secret (256 bits of entropy)".to_string(),
+            ));
+        }
+
+        Ok(Self::Symmetric(
             Arc::new(EncodingKey::from_secret(secret)),
             Arc::new(DecodingKey::from_secret(secret)),
-        )
+        ))
     }
 
     /// Create an asymmetric (ES256) signer from an EC key pair.
@@ -158,7 +168,7 @@ impl DpopConfig {
         let secret = std::env::var("JWT_SECRET")
             .map_err(|_| DpopError::Internal("JWT_SECRET is not set".into()))?;
 
-        let signer = TokenSigner::symmetric(secret.as_bytes());
+        let signer = TokenSigner::symmetric(secret.as_bytes())?;
 
         Self::builder()
             .public_url(public_url)
@@ -316,7 +326,7 @@ mod tests {
     fn base_builder() -> DpopConfigBuilder {
         DpopConfig::builder()
             .public_url("https://auth.example.com")
-            .signer(TokenSigner::symmetric(b"test-secret"))
+            .signer(TokenSigner::symmetric(b"test-secret-key-must-be-at-least-32-bytes").unwrap())
     }
 
     #[test]
@@ -360,7 +370,7 @@ mod tests {
     #[test]
     fn build_requires_public_url() {
         let result = DpopConfig::builder()
-            .signer(TokenSigner::symmetric(b"secret"))
+            .signer(TokenSigner::symmetric(b"test-secret-key-must-be-at-least-32-bytes").unwrap())
             .build();
 
         assert!(result.is_err());
@@ -382,7 +392,12 @@ mod tests {
 
     #[test]
     fn signer_algorithm_is_correct() {
-        assert_eq!(TokenSigner::symmetric(b"x").algorithm(), Algorithm::HS256);
+        assert_eq!(
+            TokenSigner::symmetric(b"test-secret-key-must-be-at-least-32-bytes")
+                .unwrap()
+                .algorithm(),
+            Algorithm::HS256
+        );
     }
 
     #[cfg(feature = "cookie")]

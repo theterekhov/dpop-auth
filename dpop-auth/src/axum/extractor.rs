@@ -51,11 +51,11 @@ pub fn deserialize_extra<T: DeserializeOwned + Send + Sync + 'static>(
 #[macro_export]
 macro_rules! impl_from_extra {
     ($t:ty) => {
-        impl $crate::extractor::FromExtra for $t {
+        impl $crate::axum::extractor::FromExtra for $t {
             fn from_extra(
                 extra: serde_json::Map<String, serde_json::Value>,
             ) -> Result<Self, $crate::DpopError> {
-                $crate::extractor::deserialize_extra(extra)
+                $crate::axum::extractor::deserialize_extra(extra)
             }
         }
     };

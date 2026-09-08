@@ -11,8 +11,8 @@ use tower::Service;
 
 use crate::{
     DpopError,
+    axum::extractor::ValidatedSession,
     dpop::{ValidationContext, validate_dpop_proof},
-    extractor::ValidatedSession,
     state::DpopState,
     token::verify_access_token,
 };
@@ -196,7 +196,7 @@ mod tests {
 
     use crate::{
         DpopConfig, DpopSession, TokenSigner,
-        crypto::{compute_ath, compute_jwk_thumbprint},
+        crypto::dpop::{compute_ath, compute_jwk_thumbprint},
         token::{AccessTokenClaims, Confirmation, issue_access_token},
     };
 
@@ -281,7 +281,7 @@ mod tests {
             .public_url(PUBLIC_URL)
             .issuer(PUBLIC_URL)
             .audience(PUBLIC_URL)
-            .signer(TokenSigner::symmetric(b"test-secret"))
+            .signer(TokenSigner::symmetric(b"test-secret-key-must-be-at-least-32-bytes").unwrap())
             .nonce_required(nonce_required)
             .build()
             .unwrap()

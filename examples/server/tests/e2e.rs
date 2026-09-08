@@ -86,7 +86,7 @@ async fn full_dpop_flow_register_login_then_me(pool: PgPool) {
     let config = DpopConfig::builder()
         .public_url(PUBLIC_URL)
         .allow_registration(true)
-        .signer(TokenSigner::symmetric(TEST_SIGNER_SECRET))
+        .signer(TokenSigner::symmetric(TEST_SIGNER_SECRET).unwrap())
         .build()
         .expect("failed to build DpopConfig");
 

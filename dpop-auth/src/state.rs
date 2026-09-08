@@ -4,7 +4,10 @@ use axum::extract::FromRef;
 
 use crate::{
     DpopConfig,
-    cache::{JtiCache, NonceCache, create_jti_cache, create_nonce_cache},
+    cache::{
+        jti::{JtiCache, create_jti_cache},
+        nonce::{NonceCache, create_nonce_cache},
+    },
 };
 
 /// Shared state held by the DPoP layer and available to handlers.
@@ -21,9 +24,13 @@ pub struct DpopState {
 impl DpopState {
     /// Create the state and its caches from a configuration.
     pub fn new(config: DpopConfig) -> Self {
+        // To strictly prevent replay attacks, the jti cache TTL must span
+        // the entire freshness window (past and future) plus a 5s execution buffer.
+        let jti_ttl = config.clock_skew * 2 + std::time::Duration::from_secs(5);
+
         Self {
             config,
-            jti_cache: create_jti_cache(),
+            jti_cache: create_jti_cache(jti_ttl),
             nonce_cache: create_nonce_cache(),
         }
     }
@@ -46,7 +53,7 @@ mod tests {
             .public_url("https://example.com")
             .issuer("https://example.com")
             .audience("https://example.com")
-            .signer(TokenSigner::symmetric(b"test-secret-key"))
+            .signer(TokenSigner::symmetric(b"test-secret-key-must-be-at-least-32-bytes").unwrap())
             .nonce_required(true)
             .build()
             .unwrap()

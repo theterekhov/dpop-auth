@@ -1,5 +1,6 @@
 //! Email delivery abstraction (feature `email`).
 
+use std::future::Future;
 use std::pin::Pin;
 
 use moka::future::FutureExt;
@@ -25,6 +26,7 @@ pub enum EmailError {
     Internal(String),
 }
 
+#[cfg(feature = "postgres")]
 impl From<sqlx::Error> for EmailError {
     fn from(value: sqlx::Error) -> Self {
         EmailError::Internal(value.to_string())

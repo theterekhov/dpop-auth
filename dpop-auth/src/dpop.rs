@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     DpopError,
-    cache::{JtiCache, NonceCache},
+    cache::{jti::JtiCache, nonce::NonceCache},
     crypto::compute_ath,
 };
 
@@ -235,7 +235,7 @@ mod tests {
     use p256::{SecretKey, ecdsa::SigningKey, elliptic_curve::Generate, pkcs8::EncodePrivateKey};
     use tokio::task::JoinSet;
 
-    use crate::cache::{create_jti_cache, create_nonce_cache};
+    use crate::cache::{jti::create_jti_cache, nonce::create_nonce_cache};
 
     use super::*;
 
@@ -247,8 +247,8 @@ mod tests {
     impl TestClient {
         fn new() -> Self {
             let secret = SecretKey::generate();
-            let singing_key = SigningKey::from(&secret);
-            let verifying_key = singing_key.verifying_key();
+            let signing_key = SigningKey::from(&secret);
+            let verifying_key = signing_key.verifying_key();
             let point = verifying_key.to_sec1_point(false);
 
             let jwk = Jwk {
@@ -327,7 +327,7 @@ mod tests {
 
     #[tokio::test]
     async fn jti_cache_insert_and_contains() {
-        let cache = create_jti_cache();
+        let cache = create_jti_cache(Duration::from_secs(125));
         cache.insert("test-jti".into(), true).await;
         assert!(cache.contains_key("test-jti"));
     }
@@ -341,7 +341,7 @@ mod tests {
 
     #[tokio::test]
     async fn entry_or_insert_is_atomic_concurrent() {
-        let cache = Arc::new(create_jti_cache());
+        let cache = Arc::new(create_jti_cache(Duration::from_secs(125)));
         let jti = "concurrent-test-jti".to_string();
         let mut set = JoinSet::new();
 
@@ -405,7 +405,7 @@ mod tests {
     #[tokio::test]
     async fn valid_proof_is_accepted() {
         let client = TestClient::new();
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let proof = client.proof("POST", "https://example.com/login", None, None, None);
 
@@ -429,7 +429,7 @@ mod tests {
 
     #[tokio::test]
     async fn proof_too_large_rejected() {
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let giant = "x".repeat(9000);
 
@@ -451,7 +451,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_typ_rejected() {
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let proof = manual_proof(r#"{"typ":"bearer","alg":"ES256"}"#, "{}");
 
@@ -473,7 +473,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_alg_rejected() {
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let proof = manual_proof(r#"{"typ":"dpop+jwt","alg":"HS256"}"#, "{}");
 
@@ -495,7 +495,7 @@ mod tests {
 
     #[tokio::test]
     async fn missing_jwk_rejected() {
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let proof = manual_proof(r#"{"typ":"dpop+jwt","alg":"ES256"}"#, "{}");
 
@@ -518,7 +518,7 @@ mod tests {
     #[tokio::test]
     async fn htm_mismatch_rejected() {
         let client = TestClient::new();
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let proof = client.proof("POST", "https://example.com/login", None, None, None);
 
@@ -541,7 +541,7 @@ mod tests {
     #[tokio::test]
     async fn htu_mismatch_rejected() {
         let client = TestClient::new();
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let proof = client.proof("POST", "https://example.com/login", None, None, None);
 
@@ -564,7 +564,7 @@ mod tests {
     #[tokio::test]
     async fn ath_mismatch_rejected() {
         let client = TestClient::new();
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let proof = client.proof(
             "POST",
@@ -593,7 +593,7 @@ mod tests {
     #[tokio::test]
     async fn ath_matches_accepted() {
         let client = TestClient::new();
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let proof = client.proof(
             "POST",
@@ -622,7 +622,7 @@ mod tests {
     #[tokio::test]
     async fn jti_replay_rejected() {
         let client = TestClient::new();
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let proof = client.proof("POST", "https://example.com/login", None, None, None);
 
@@ -648,7 +648,7 @@ mod tests {
     #[tokio::test]
     async fn iat_in_past_rejected() {
         let client = TestClient::new();
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let now = jsonwebtoken::get_current_timestamp();
         let proof = client.proof(
@@ -678,7 +678,7 @@ mod tests {
     #[tokio::test]
     async fn iat_in_future_rejected() {
         let client = TestClient::new();
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let now = jsonwebtoken::get_current_timestamp();
         let proof = client.proof(
@@ -708,7 +708,7 @@ mod tests {
     #[tokio::test]
     async fn nonce_required_token_endpoint() {
         let client = TestClient::new();
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let proof = client.proof("POST", "https://example.com/login", None, None, None);
 
@@ -731,7 +731,7 @@ mod tests {
     #[tokio::test]
     async fn nonce_required_resource() {
         let client = TestClient::new();
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
         let proof = client.proof(
             "POST",
@@ -760,7 +760,7 @@ mod tests {
     #[tokio::test]
     async fn nonce_valid_accepted() {
         let client = TestClient::new();
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
 
         nonce_cache.insert("known-nonce".into(), true).await;
@@ -791,7 +791,7 @@ mod tests {
     #[tokio::test]
     async fn nonce_can_be_reused_across_requests() {
         let client = TestClient::new();
-        let jti_cache = create_jti_cache();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
         let nonce_cache = create_nonce_cache();
 
         nonce_cache.insert("reusable-nonce".into(), true).await;
