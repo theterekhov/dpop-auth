@@ -30,21 +30,19 @@ jobs:
           --health-retries 5
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Set up cargo cache
-        uses: Swatinem/rust-cache@v2
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgres://postgres:password@localhost:5432/dpop_db
+        run: |
+          cargo install sqlx-cli --no-default-features --features postgres
+          sqlx migrate run --source dpop-auth/migrations
 
       - name: Check code formatting
         run: cargo fmt --all -- --check
 
       - name: Run Clippy linter
+        env:
+          DATABASE_URL: postgres://postgres:password@localhost:5432/dpop_db
         run: cargo clippy --all-features -- -D warnings
 
       - name: Run test suite (excluding web/WASM)
