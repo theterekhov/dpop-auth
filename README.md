@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/dpop-auth.svg)](https://crates.io/crates/dpop-auth)
 [![Docs.rs](https://docs.rs/dpop-auth/badge.svg)](https://docs.rs/dpop-auth)
-[![License](https://img.shields.io/crates/l/dpop-auth.svg)](https://choosealicense.com/licenses/mit/)
+[![License](https://img.shields.io/github/license/theterekhov/dpop-auth.svg)](LICENSE-MIT)
 
 DPoP (RFC 9449) library for Axum.
 
