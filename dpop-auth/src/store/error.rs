@@ -1,5 +1,7 @@
 //! Store-layer error type.
 
+use axum::{Json, response::IntoResponse};
+use http::StatusCode;
 use thiserror::Error;
 
 /// Errors raised by the PostgreSQL auth service.
@@ -34,5 +36,32 @@ pub enum ServiceError {
 impl From<sqlx::Error> for ServiceError {
     fn from(value: sqlx::Error) -> Self {
         ServiceError::Internal(value.to_string())
+    }
+}
+
+impl IntoResponse for ServiceError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match self {
+            ServiceError::Unauthorized => {
+                (StatusCode::UNAUTHORIZED, "invalid credentials".to_string())
+            }
+            ServiceError::Conflict(msg) => (StatusCode::CONFLICT, msg),
+            ServiceError::RegistrationDisabled => (
+                StatusCode::FORBIDDEN,
+                "registration is disabled".to_string(),
+            ),
+            ServiceError::Validation(msg) => (StatusCode::BAD_REQUEST, msg),
+            // Do not leak the internal detail to the client (anti-reconnaissance).
+            // The real reason is already recorded via `tracing`.
+            ServiceError::Internal(msg) => {
+                tracing::error!(target: "dpop_auth::security", error = %msg, "internal service error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal error".to_string(),
+                )
+            }
+        };
+
+        (status, Json(serde_json::json!({"error": message}))).into_response()
     }
 }
