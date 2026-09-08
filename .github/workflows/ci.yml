@@ -8,7 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  SQLX_OFFLINE: true"
+  SQLX_OFFLINE: "true"
+  DATABASE_URL: postgres://postgres:password@localhost:5432/dpop_db
 
 jobs:
   test:
@@ -31,9 +32,18 @@ jobs:
           --health-retries 5
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Set up cargo cache
+        uses: Swatinem/rust-cache@v2
+
       - name: Run database migrations
-        env:
-          DATABASE_URL: postgres://postgres:password@localhost:5432/dpop_db
         run: |
           cargo install sqlx-cli --no-default-features --features postgres
           sqlx migrate run --source dpop-auth/migrations
@@ -42,13 +52,9 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Clippy linter
-        env:
-          DATABASE_URL: postgres://postgres:password@localhost:5432/dpop_db
         run: cargo clippy --all-features -- -D warnings
 
       - name: Run test suite (excluding web/WASM)
-        env:
-          DATABASE_URL: postgres://postgres:password@localhost:5432/dpop_db
         run: cargo test --workspace --exclude web --all-features
 
       - name: Check docs (rustdoc gate)
@@ -56,6 +62,4 @@ jobs:
 
       - name: Check sqlx cache is fresh
         working-directory: dpop-auth
-        env:
-          DATABASE_URL: postgres://postgres:password@localhost:5432/dpop_db
         run: cargo sqlx prepare --check
