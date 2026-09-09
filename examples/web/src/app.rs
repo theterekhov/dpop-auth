@@ -102,8 +102,9 @@ fn RegisterForm(
             <h2 style="margin-top: 0px;">"Register Account"</h2>
             <form on:submit=on_submit>
                 <div style="margin-bottom: 0.8rem;">
-                    <label style="display: block; font-weight: bold; margin-bottom: 0.2rem;">"Name"</label>
+                    <label for="name" style="display: block; font-weight: bold; margin-bottom: 0.2rem;">"Name"</label>
                     <input
+                        id="name"
                         type="text"
                         style="width: 100%; box-sizing: border-box; padding: 0.4rem;"
                         prop:value=name
@@ -112,8 +113,9 @@ fn RegisterForm(
                     />
                 </div>
                 <div style="margin-bottom: 0.8rem;">
-                    <label style="display: block; font-weight: bold; margin-bottom: 0.2rem;">"Email"</label>
+                    <label for="email" style="display: block; font-weight: bold; margin-bottom: 0.2rem;">"Email"</label>
                     <input
+                        id="email"
                         type="email"
                         style="width: 100%; box-sizing: border-box; padding: 0.4rem;"
                         prop:value=email
@@ -122,8 +124,9 @@ fn RegisterForm(
                     />
                 </div>
                 <div style="margin-bottom: 1.2rem;">
-                    <label style="display: block; font-weight: bold; margin-bottom: 0.2rem;">"password"</label>
+                    <label for="password" style="display: block; font-weight: bold; margin-bottom: 0.2rem;">"Password"</label>
                     <input
+                        id="password"
                         type="password"
                         style="width: 100%; box-sizing: border-box; padding: 0.4rem;"
                         prop:value=password
@@ -207,11 +210,12 @@ fn LoginForm(
 
     view! {
         <div style="max-width: 380px; margin: 3rem auto; padding: 1.5rem; border: 1px solid #ddd; border-radius: 8px; font-family: sans-serif;">
-            <h2 style="margin-top: 0px;">"Register Account"</h2>
+            <h2 style="margin-top: 0px;">"Login"</h2>
             <form on:submit=on_submit>
                 <div style="margin-bottom: 0.8rem;">
-                    <label style="display: block; font-weight: bold; margin-bottom: 0.2rem;">"Email"</label>
+                    <label for="email" style="display: block; font-weight: bold; margin-bottom: 0.2rem;">"Email"</label>
                     <input
+                        id="email"
                         type="email"
                         style="width: 100%; box-sizing: border-box; padding: 0.4rem;"
                         prop:value=email
@@ -220,8 +224,9 @@ fn LoginForm(
                     />
                 </div>
                 <div style="margin-bottom: 1.2rem;">
-                    <label style="display: block; font-weight: bold; margin-bottom: 0.2rem;">"password"</label>
+                    <label for="password" style="display: block; font-weight: bold; margin-bottom: 0.2rem;">"Password"</label>
                     <input
+                        id="password"
                         type="password"
                         style="width: 100%; box-sizing: border-box; padding: 0.4rem;"
                         prop:value=password
