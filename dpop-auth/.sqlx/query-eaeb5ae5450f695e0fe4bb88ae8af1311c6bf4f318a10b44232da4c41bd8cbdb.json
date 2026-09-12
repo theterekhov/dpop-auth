@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tUPDATE dpop_users SET\n\t\t\tpassword_hash = $2,\n\t\t\tpassword_changed_at = now()\n\t\tWHERE id = $1 AND deleted_at IS NULL\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "eaeb5ae5450f695e0fe4bb88ae8af1311c6bf4f318a10b44232da4c41bd8cbdb"
+}

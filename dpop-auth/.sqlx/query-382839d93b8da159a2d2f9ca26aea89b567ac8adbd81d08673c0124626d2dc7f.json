@@ -1,0 +1,185 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n      \tSELECT\n       \t\tu.id,\n         \tu.public_id,\n          \tu.password_hash,\n           \tu.name,\n            u.password_changed_at,\n            u.totp_secret,\n            u.totp_enabled,\n            u.totp_enabled_at,\n            u.totp_pending_secret,\n\t\t\tu.totp_pending_at,\n            u.last_login_at,\n            u.created_at,\n            u.updated_at,\n            u.deleted_at\n        FROM dpop_users u\n        JOIN dpop_identifiers i ON i.user_id = u.id\n        WHERE i.kind = $1\n        \tAND LOWER(i.value) = $2\n         \tAND i.deleted_at IS NULL\n          \tAND u.deleted_at IS NULL\n      \t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "public_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "public_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "password_hash",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "password_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "password_changed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "password_changed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "totp_secret",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "totp_secret"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "totp_enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "totp_enabled"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "totp_enabled_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "totp_enabled_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "totp_pending_secret",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "totp_pending_secret"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "totp_pending_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "totp_pending_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "last_login_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "last_login_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "deleted_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dpop_users",
+            "name": "deleted_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "382839d93b8da159a2d2f9ca26aea89b567ac8adbd81d08673c0124626d2dc7f"
+}

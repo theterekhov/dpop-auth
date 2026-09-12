@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n     \tINSERT INTO dpop_recovery_codes (user_id, code_hash)\n      \tSELECT\n       \t\t$1,\n         \tunnest($2::text[])\n     \t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f1ae1ebe0032869d014fdb06a012a63722671260527bd8c8e1f9796f5b8d4f69"
+}

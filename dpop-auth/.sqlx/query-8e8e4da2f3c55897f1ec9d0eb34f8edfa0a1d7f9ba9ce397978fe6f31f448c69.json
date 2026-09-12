@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tINSERT INTO dpop_email_outbox (to_address, subject, body)\n\t\tVALUES ($1, $2, $3)\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8e8e4da2f3c55897f1ec9d0eb34f8edfa0a1d7f9ba9ce397978fe6f31f448c69"
+}

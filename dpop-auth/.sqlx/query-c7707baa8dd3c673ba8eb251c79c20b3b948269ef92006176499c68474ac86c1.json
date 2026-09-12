@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tUPDATE dpop_email_outbox\n\t\tSET\n\t\t\tattempts = attempts + 1,\n\t\t\tlast_error = $2,\n\t\t\tavailable_at = $3,\n\t\t\tlocked_at = NULL\n\t\tWHERE id = $1\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c7707baa8dd3c673ba8eb251c79c20b3b948269ef92006176499c68474ac86c1"
+}
