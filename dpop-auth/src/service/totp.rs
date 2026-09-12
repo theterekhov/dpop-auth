@@ -1,5 +1,7 @@
 //! TOTP (2FA) enrollment, confirmation, and verification (feature `totp`).
 
+use std::{sync::Arc, time::Duration};
+
 use uuid::Uuid;
 
 use crate::{
@@ -25,6 +27,7 @@ pub enum SecondFactorKind {
 }
 
 /// Internal classification outcome for a single TOTP evaluation attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TotpCheck {
     /// Code matched the expected HMAC-SHA1 value within the time window
     /// and has not been used yet.
@@ -321,6 +324,40 @@ impl AuthService {
         tx.commit().await?;
 
         Ok(())
+    }
+
+    /// Spawns a background task that periodically purges expired pending TOTP drafts.
+    ///
+    /// Runs every 10 minutes to prevent accumulation of abandoned drafts in `dpop_user`.
+    pub fn start_totp_cleanup_worker(self: Arc<Self>) {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(600));
+            interval.tick().await; // consume immediate first tick
+
+            loop {
+                interval.tick().await;
+
+                match self.pool.acquire().await {
+                    Ok(mut conn) => {
+                        if let Err(e) = repo_totp::cleanup_expired_drafts(&mut conn).await {
+                            tracing::error!(
+                                target: "dpop_auth::totp",
+                                error = %e,
+                                "failed to cleanup expired TOTP drafts"
+                            );
+                        }
+                    }
+
+                    Err(e) => {
+                        tracing::error!(
+                            target: "dpop_auth::totp",
+                            error = %e,
+                            "failed to acquired DB connection for TOTP cleanup"
+                        );
+                    }
+                }
+            }
+        });
     }
 }
 
@@ -625,5 +662,38 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(active_recovery_codes, 0);
+    }
+
+    #[sqlx::test]
+    async fn totp_valid_code_consumed_then_replayed(pool: PgPool) {
+        let user = register(&pool).await;
+        let service = service(&pool);
+
+        let secret_base32 = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+        sqlx::query(
+            r#"
+         	UPDATE dpop_users SET totp_secret = $1
+          	WHERE id = $2
+         	"#,
+        )
+        .bind(secret_base32)
+        .bind(user.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let code = current_code(secret_base32);
+
+        let first = service
+            .verify_totp_once(user.id, secret_base32, &code)
+            .await
+            .unwrap();
+        assert_eq!(first, TotpCheck::Valid);
+
+        let second = service
+            .verify_totp_once(user.id, secret_base32, &code)
+            .await
+            .unwrap();
+        assert_eq!(second, TotpCheck::Replayed);
     }
 }

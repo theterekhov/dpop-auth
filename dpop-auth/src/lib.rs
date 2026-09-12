@@ -17,12 +17,15 @@ pub mod error;
 pub mod state;
 pub mod token;
 
+#[cfg_attr(docsrs, doc(cfg(feature = "email")))]
 #[cfg(feature = "email")]
 pub mod email;
 
+#[cfg_attr(docsrs, doc(cfg(feature = "postgres")))]
 #[cfg(feature = "postgres")]
 pub mod service;
 
+#[cfg_attr(docsrs, doc(cfg(feature = "postgres")))]
 #[cfg(feature = "postgres")]
 pub mod store;
 
@@ -33,22 +36,28 @@ pub use error::DpopError;
 pub use jsonwebtoken::jwk::Jwk;
 pub use state::DpopState;
 
+#[cfg_attr(docsrs, doc(cfg(feature = "postgres")))]
 #[cfg(feature = "postgres")]
 pub use service::{AuthService, LoginOutcome, RegisterParams, TokenPair};
 
+#[cfg_attr(docsrs, doc(cfg(feature = "postgres")))]
 #[cfg(feature = "postgres")]
 pub use store::{TenantTx, create_pool, run_migrations};
 
+#[cfg_attr(docsrs, doc(cfg(feature = "postgres")))]
 #[cfg(feature = "postgres")]
 pub use store::error::ServiceError;
 
+#[cfg_attr(docsrs, doc(cfg(feature = "totp")))]
 #[cfg(feature = "totp")]
 pub use crypto::totp::TotpSetup;
 
+#[cfg_attr(docsrs, doc(cfg(feature = "email")))]
 #[cfg(feature = "email")]
 pub use email::{
     EmailError, EmailSender, LogEmailSender, SmtpConfig, SmtpEmailSender, StubEmailSender,
 };
 
+#[cfg_attr(docsrs, doc(cfg(all(feature = "email", feature = "postgres"))))]
 #[cfg(all(feature = "email", feature = "postgres"))]
 pub use service::email::EmailOutboxWorker;

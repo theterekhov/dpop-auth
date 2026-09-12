@@ -50,7 +50,22 @@ pub struct ValidatedProof {
     pub jwk_thumbprint: String,
 }
 
+impl std::fmt::Debug for ValidatedProof {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let masked_jkt = if self.jwk_thumbprint.len() > 8 {
+            format!("{}...", &self.jwk_thumbprint[..8])
+        } else {
+            "***".to_string()
+        };
+
+        f.debug_struct("ValidatedProof")
+            .field("jwk_thumbprint", &masked_jkt)
+            .finish()
+    }
+}
+
 /// Everything needed to validate a DPoP proof for one request.
+#[derive(Clone)]
 pub struct ValidationContext<'a> {
     /// The proof JWT taken from the `DPoP` header.
     pub proof: &'a str,
@@ -235,7 +250,12 @@ mod tests {
     use p256::{SecretKey, ecdsa::SigningKey, elliptic_curve::Generate, pkcs8::EncodePrivateKey};
     use tokio::task::JoinSet;
 
-    use crate::cache::{jti::create_jti_cache, nonce::create_nonce_cache};
+    use crate::{
+        DpopConfig, TokenSigner,
+        cache::{jti::create_jti_cache, nonce::create_nonce_cache},
+        crypto::compute_jwk_thumbprint,
+        token::issue_access_token,
+    };
 
     use super::*;
 
@@ -839,5 +859,130 @@ mod tests {
 
         assert!(result1.is_ok());
         assert!(result2.is_ok());
+    }
+
+    #[tokio::test]
+    async fn replayed_proof_is_rejected() {
+        let client = TestClient::new();
+        let jti_cache = create_jti_cache(Duration::from_secs(300));
+        let nonce_cache = create_nonce_cache();
+        let proof = client.proof("POST", "https://example.com/login", None, None, None);
+
+        let ctx = ValidationContext {
+            proof: &proof,
+            expected_htm: "POST",
+            expected_htu: "https://example.com/login",
+            access_token: None,
+            nonce_required: false,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
+            jti_cache: &jti_cache,
+            nonce_cache: &nonce_cache,
+        };
+
+        validate_dpop_proof(ctx.clone()).await.unwrap();
+
+        let err = validate_dpop_proof(ctx).await.unwrap_err();
+        assert!(matches!(err, DpopError::JtiReplay));
+    }
+
+    #[tokio::test]
+    async fn nonce_required_roundtrip() {
+        let client = TestClient::new();
+        let jti_cache = create_jti_cache(Duration::from_secs(300));
+        let nonce_cache = create_nonce_cache();
+
+        let config = DpopConfig::builder()
+            .public_url("https://example.com")
+            .issuer("https://example.com")
+            .audience("api")
+            .signer(TokenSigner::symmetric(b"test-secret-key-must-be-at-least-32-bytes").unwrap())
+            .build()
+            .unwrap();
+        let jkt = compute_jwk_thumbprint(&client.jwk).unwrap();
+        let token = issue_access_token(
+            &config.signer,
+            &config.issuer,
+            &config.audience,
+            Duration::from_secs(900),
+            "user-1",
+            &jkt,
+            Default::default(),
+        )
+        .unwrap();
+
+        let err = validate_dpop_proof(ValidationContext {
+            proof: &client.proof("GET", "https://example.com/tickets", None, None, None),
+            expected_htm: "GET",
+            expected_htu: "https://example.com/tickets",
+            access_token: Some(&token),
+            nonce_required: true,
+            clock_skew: TEST_SKEW,
+            allowed_algs: TEST_ALGS,
+            jti_cache: &jti_cache,
+            nonce_cache: &nonce_cache,
+        })
+        .await
+        .unwrap_err();
+
+        let nonce = match err {
+            DpopError::ResourceNonceRequired(nonce) => nonce,
+            other => panic!("expected ResourceNonceRequired, got {other:?}"),
+        };
+        assert!(nonce_cache.contains_key(&nonce));
+
+        let retry = client.proof(
+            "GET",
+            "https://example.com/tickets",
+            Some(&nonce),
+            Some(&token),
+            None,
+        );
+        validate_dpop_proof(ValidationContext {
+            proof: &retry,
+            expected_htm: "GET",
+            expected_htu: "https://example.com/tickets",
+            access_token: Some(&token),
+            nonce_required: true,
+            clock_skew: TEST_SKEW,
+            allowed_algs: TEST_ALGS,
+            jti_cache: &jti_cache,
+            nonce_cache: &nonce_cache,
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn nonce_multi_use_allowed_within_window() {
+        let client = TestClient::new();
+        let jti_cache = create_jti_cache(Duration::from_secs(300));
+        let nonce_cache = create_nonce_cache();
+        let nonce = "server-issued-nonce".to_string();
+
+        nonce_cache.insert(nonce.clone(), true).await;
+
+        for _ in 0..3 {
+            let proof = client.proof(
+                "GET",
+                "https://example.com/tickets",
+                Some(&nonce),
+                None,
+                None,
+            );
+            validate_dpop_proof(ValidationContext {
+                proof: &proof,
+                expected_htm: "GET",
+                expected_htu: "https://example.com/tickets",
+                access_token: None,
+                nonce_required: true,
+                clock_skew: TEST_SKEW,
+                allowed_algs: TEST_ALGS,
+                jti_cache: &jti_cache,
+                nonce_cache: &nonce_cache,
+            })
+            .await
+            .unwrap();
+        }
     }
 }
