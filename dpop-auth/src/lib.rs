@@ -8,6 +8,9 @@
 //! A reusable library that validates DPoP proofs, issues and verifies
 //! sender-constrained access tokens, and manages opaque refresh tokens.
 
+#[doc(hidden)]
+extern crate self as dpop_auth;
+
 pub mod axum;
 pub mod cache;
 pub mod config;
@@ -61,3 +64,7 @@ pub use email::{
 #[cfg_attr(docsrs, doc(cfg(all(feature = "email", feature = "postgres"))))]
 #[cfg(all(feature = "email", feature = "postgres"))]
 pub use service::email::EmailOutboxWorker;
+
+#[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
+#[cfg(feature = "derive")]
+pub use dpop_auth_macros::FromExtra;

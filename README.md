@@ -26,6 +26,7 @@ The library is completely modular. All features are opt-in (default is just the 
 - `totp` — two-factor authentication (TOTP) and single-use recovery codes.
 - `email` — transactional outbox worker for email dispatching.
 - `cookie` — helpers for delivering refresh tokens via `HttpOnly` cookies.
+- `derive` — provides `#[derive(FromExtra)]` procedural macro for automatic claims deserialization.
 
 ## Quick start
 

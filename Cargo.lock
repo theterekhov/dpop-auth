@@ -714,13 +714,14 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "dpop-auth"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "argon2",
  "axum",
  "axum-extra",
  "base64ct",
  "chrono",
+ "dpop-auth-macros",
  "getrandom 0.4.3",
  "hex",
  "http",
@@ -743,6 +744,15 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "dpop-auth-macros"
+version = "0.1.2"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.5",
 ]
 
 [[package]]
@@ -2516,7 +2526,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -3563,7 +3573,7 @@ dependencies = [
 
 [[package]]
 name = "web"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64ct",
  "console_error_panic_hook",

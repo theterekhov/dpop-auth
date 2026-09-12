@@ -25,6 +25,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
+derive = ["dep:dpop-auth-macros"]
 cookie = ["dep:axum-extra", "dep:time"]
 postgres = ["dep:sqlx", "dep:chrono", "dep:argon2", "dep:ipnetwork"]
 totp = ["dep:totp-rs"]
@@ -48,6 +49,7 @@ tower.workspace = true
 http.workspace = true
 tokio.workspace = true
 
+dpop-auth-macros = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true}
 ipnetwork = {workspace = true, optional = true}
 chrono = { workspace = true, optional = true}

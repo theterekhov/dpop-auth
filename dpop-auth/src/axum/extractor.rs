@@ -88,3 +88,28 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "derive")]
+    use super::*;
+
+    #[cfg(feature = "derive")]
+    #[derive(Debug, PartialEq, Eq, serde::Deserialize, crate::FromExtra)]
+    struct TestDerivedClaims {
+        user_role: String,
+        is_active: bool,
+    }
+
+    #[cfg(feature = "derive")]
+    #[test]
+    fn derive_from_extra_roundtrip() {
+        let mut map = serde_json::Map::new();
+        map.insert("user_role".to_string(), serde_json::json!("moderator"));
+        map.insert("is_active".to_string(), serde_json::json!(true));
+
+        let claims = TestDerivedClaims::from_extra(map).expect("failed to deserialize extra");
+        assert_eq!(claims.user_role, "moderator");
+        assert!(claims.is_active);
+    }
+}
