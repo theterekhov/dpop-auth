@@ -36,4 +36,16 @@ mod tests {
         cache.insert(key.clone(), ()).await;
         assert!(cache.contains_key(&key));
     }
+
+    #[tokio::test]
+    async fn totp_key_is_user_and_code() {
+        let cache = create_totp_replay_cache();
+        let (user_a, user_b) = (uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
+
+        cache.insert((user_a, "123456".to_string()), ()).await;
+
+        assert!(cache.contains_key(&(user_a, "123456".to_string())));
+        assert!(!cache.contains_key(&(user_a, "654321".to_string())));
+        assert!(!cache.contains_key(&(user_b, "123456".to_string())));
+    }
 }

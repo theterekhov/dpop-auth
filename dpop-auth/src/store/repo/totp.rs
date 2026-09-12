@@ -230,7 +230,7 @@ pub async fn count_active_recovery_codes(
         r#"
 		SELECT COUNT(*) as "count!"
 		FROM dpop_recovery_codes
-		WHERE id = $1
+		WHERE user_id = $1
 			AND used_at IS NULL
 		"#,
         user_id

@@ -23,3 +23,32 @@ pub fn create_nonce_cache() -> NonceCache {
         .max_capacity(CACHE_CAPACITY)
         .build()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn nonce_absent_then_present() {
+        let cache = create_nonce_cache();
+        let nonce = "nonce-1".to_string();
+
+        assert!(!cache.contains_key(&nonce));
+        cache.insert(nonce.clone(), true).await;
+        assert!(cache.contains_key(&nonce));
+    }
+
+    #[tokio::test]
+    async fn nonce_survives_reuse_within_window() {
+        let cache = create_nonce_cache();
+        let nonce = "nonce-2".to_string();
+
+        cache.insert(nonce.clone(), true).await;
+        for _ in 0..10 {
+            assert!(cache.contains_key(&nonce));
+        }
+
+        cache.remove(&nonce).await;
+        assert!(!cache.contains_key(&nonce));
+    }
+}

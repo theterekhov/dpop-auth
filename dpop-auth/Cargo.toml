@@ -11,6 +11,7 @@ repository.workspace = true
 readme = "../README.md"
 include = [
 	"src/**",
+	"tests/**",
 	"migrations/**",
 	".sqlx/**",
 	"Cargo.toml",
