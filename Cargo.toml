@@ -12,7 +12,7 @@ repository = "https://github.com/theterekhov/dpop-auth"
 
 [workspace.dependencies]
 dpop-auth = { path = "dpop-auth/" }
-dpop-auth-macros = { path = "dpop-auth-macros/" }
+dpop-auth-macros = { path = "dpop-auth-macros/", version= "0.1.2" }
 sha2 = "0.11.0"
 jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 base64ct = { version = "1.8.3", features = ["alloc"] }
