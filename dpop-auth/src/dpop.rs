@@ -2,10 +2,11 @@
 
 use std::time::Duration;
 
+use base64ct::{Base64UrlUnpadded, Encoding};
 use jsonwebtoken::{
     Algorithm, DecodingKey, Validation, decode, decode_header,
     errors::ErrorKind,
-    jwk::{Jwk, ThumbprintHash},
+    jwk::{AlgorithmParameters, Jwk, KeyOperations, ThumbprintHash},
 };
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
@@ -116,6 +117,8 @@ pub async fn validate_dpop_proof(ctx: ValidationContext<'_>) -> Result<Validated
         ));
     }
 
+    reject_private_header_jwk(proof)?;
+
     let header = decode_header(proof).map_err(|e| DpopError::InvalidSignature(e.to_string()))?;
 
     if header.typ.as_deref() != Some("dpop+jwt") {
@@ -136,6 +139,8 @@ pub async fn validate_dpop_proof(ctx: ValidationContext<'_>) -> Result<Validated
     let jwk = header
         .jwk
         .ok_or_else(|| DpopError::InvalidSignature("jwk missing in header".into()))?;
+
+    ensure_public_jwk(&jwk)?;
 
     let jwk_thumbprint = jwk
         .thumbprint(ThumbprintHash::SHA256)
@@ -166,7 +171,7 @@ pub async fn validate_dpop_proof(ctx: ValidationContext<'_>) -> Result<Validated
         return Err(DpopError::Expired);
     }
 
-    if !claims.htm.eq_ignore_ascii_case(expected_htm) {
+    if claims.htm != expected_htm {
         return Err(DpopError::HtmMismatch {
             expected: expected_htm.to_string(),
             got: claims.htm,
@@ -177,15 +182,22 @@ pub async fn validate_dpop_proof(ctx: ValidationContext<'_>) -> Result<Validated
         return Err(DpopError::HtuMismatch);
     }
 
-    if nonce_required && !nonce_cache.contains_key(claims.nonce.as_deref().unwrap_or_default()) {
-        let new_nonce = Uuid::new_v4().to_string();
-        nonce_cache.insert(new_nonce.clone(), true).await;
+    if nonce_required || claims.nonce.is_some() {
+        let is_valid = claims
+            .nonce
+            .as_deref()
+            .is_some_and(|n| nonce_cache.contains_key(n));
 
-        return Err(if access_token.is_some() {
-            DpopError::ResourceNonceRequired(new_nonce)
-        } else {
-            DpopError::TokenNonceRequired(new_nonce)
-        });
+        if !is_valid {
+            let new_nonce = Uuid::new_v4().to_string();
+            nonce_cache.insert(new_nonce.clone(), true).await;
+
+            return Err(if access_token.is_some() {
+                DpopError::ResourceNonceRequired(new_nonce)
+            } else {
+                DpopError::TokenNonceRequired(new_nonce)
+            });
+        }
     }
 
     if let Some(token) = access_token {
@@ -234,6 +246,54 @@ fn normalize_htu(raw: &str) -> Result<String, DpopError> {
     normalized.push_str(url.path());
 
     Ok(normalized)
+}
+
+fn reject_private_header_jwk(proof: &str) -> Result<(), DpopError> {
+    let header_b64 = proof
+        .split('.')
+        .next()
+        .ok_or_else(|| DpopError::InvalidSignature("malformed proof".into()))?;
+
+    let bytes = Base64UrlUnpadded::decode_vec(header_b64)
+        .map_err(|_| DpopError::InvalidSignature("invalid header encoding".into()))?;
+
+    let header = serde_json::from_slice::<serde_json::Value>(&bytes)
+        .map_err(|_| DpopError::InvalidSignature("invalid header json".into()))?;
+
+    if let Some(jwk) = header.get("jwk").and_then(|v| v.as_object())
+        && (jwk.contains_key("d") || jwk.contains_key("k"))
+    {
+        return Err(DpopError::InvalidSignature(
+            "jwk must not contain private key material".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn ensure_public_jwk(jwk: &Jwk) -> Result<(), DpopError> {
+    if matches!(jwk.algorithm, AlgorithmParameters::OctetKey(_)) {
+        return Err(DpopError::InvalidSignature(
+            "jwk must not be a symmetric key".into(),
+        ));
+    }
+
+    if let Some(ops) = &jwk.common.key_operations {
+        let has_private_ops = ops.iter().any(|op| {
+            matches!(
+                op,
+                KeyOperations::Sign | KeyOperations::Decrypt | KeyOperations::UnwrapKey
+            )
+        });
+
+        if has_private_ops {
+            return Err(DpopError::InvalidSignature(
+                "jwk must not declare private key_ops".into(),
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -984,5 +1044,103 @@ mod tests {
             .await
             .unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn jwk_with_private_key_d_rejected() {
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
+        let nonce_cache = create_nonce_cache();
+        let header = r#"{"typ":"dpop+jwt","alg":"ES256","jwk":{"kty":"EC","crv":"P-256","x":"...","y":"...","d":"secret"}}"#;
+        let proof = manual_proof(header, "{}");
+
+        let result = validate_dpop_proof(ValidationContext {
+            proof: &proof,
+            expected_htm: "POST",
+            expected_htu: "https://example.com/login",
+            access_token: None,
+            nonce_required: false,
+            clock_skew: TEST_SKEW,
+            allowed_algs: TEST_ALGS,
+            jti_cache: &jti_cache,
+            nonce_cache: &nonce_cache,
+        })
+        .await;
+
+        assert!(matches!(result, Err(DpopError::InvalidSignature(_))));
+    }
+
+    #[tokio::test]
+    async fn jwk_symmetric_oct_rejected() {
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
+        let nonce_cache = create_nonce_cache();
+        let header = r#"{"typ":"dpop+jwt","alg":"ES256","jwk":{"kty":"oct","k":"c2VjcmV0"}}"#;
+        let proof = manual_proof(header, "{}");
+
+        let result = validate_dpop_proof(ValidationContext {
+            proof: &proof,
+            expected_htm: "POST",
+            expected_htu: "https://example.com/login",
+            access_token: None,
+            nonce_required: false,
+            clock_skew: TEST_SKEW,
+            allowed_algs: TEST_ALGS,
+            jti_cache: &jti_cache,
+            nonce_cache: &nonce_cache,
+        })
+        .await;
+
+        assert!(matches!(result, Err(DpopError::InvalidSignature(_))));
+    }
+
+    #[tokio::test]
+    async fn htm_is_strictly_case_sensitive() {
+        let client = TestClient::new();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
+        let nonce_cache = create_nonce_cache();
+        let proof = client.proof("post", "https://example.com/login", None, None, None);
+
+        let result = validate_dpop_proof(ValidationContext {
+            proof: &proof,
+            expected_htm: "POST",
+            expected_htu: "https://example.com/login",
+            access_token: None,
+            nonce_required: false,
+            jti_cache: &jti_cache,
+            nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
+        })
+        .await;
+
+        assert!(matches!(result, Err(DpopError::HtmMismatch { .. })));
+    }
+
+    #[tokio::test]
+    async fn invalid_client_nonce_rejected_even_when_not_required() {
+        let client = TestClient::new();
+        let jti_cache = create_jti_cache(Duration::from_secs(125));
+        let nonce_cache = create_nonce_cache();
+        let proof = client.proof(
+            "POST",
+            "https://example.com/login",
+            Some("invalid-nonce"),
+            None,
+            None,
+        );
+
+        let result = validate_dpop_proof(ValidationContext {
+            proof: &proof,
+            expected_htm: "POST",
+            expected_htu: "https://example.com/login",
+            access_token: None,
+            nonce_required: false,
+            jti_cache: &jti_cache,
+            nonce_cache: &nonce_cache,
+            allowed_algs: TEST_ALGS,
+            clock_skew: TEST_SKEW,
+        })
+        .await;
+
+        assert!(matches!(result, Err(DpopError::TokenNonceRequired(_))));
     }
 }
